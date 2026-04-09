@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Extrator NF-e → Excel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f4f6f9;color:#1a1a2e;min-height:100vh;padding:2rem 1rem}
+
+/* LOGIN */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem;position:fixed;inset:0;background:#f4f6f9;z-index:999}
+.login-card{background:#fff;border-radius:14px;border:1px solid #e0e6f0;padding:2.5rem 2rem;width:100%;max-width:360px;text-align:center}
+.login-card h1{font-size:20px;font-weight:700;color:#1F3864;margin-bottom:6px}
+.login-card p{font-size:13px;color:#777;margin-bottom:1.8rem}
+.login-card input[type=password]{width:100%;padding:10px 14px;border-radius:8px;border:1.5px solid #c8d0e0;font-size:15px;margin-bottom:12px;outline:none;transition:border-color .2s}
+.login-card input[type=password]:focus{border-color:#1F3864}
+.login-card button{width:100%;padding:11px;background:#1F3864;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s}
+.login-card button:hover{background:#162b4a}
+.login-error{font-size:13px;color:#b91c1c;margin-top:10px;display:none}
+
+/* APP */
+#app{display:none}
+.container{max-width:820px;margin:0 auto}
+header{text-align:center;margin-bottom:1.8rem}
+header h1{font-size:22px;font-weight:700;color:#1F3864}
+header p{font-size:13px;color:#666;margin-top:5px}
+
+/* CONFIGURAR CAMPOS */
+.config-wrap{background:#fff;border:1px solid #e0e6f0;border-radius:12px;margin-bottom:1.4rem;overflow:hidden}
+.config-header{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;cursor:pointer;user-select:none}
+.config-header:hover{background:#f8f9fc}
+.config-title{font-size:14px;font-weight:600;color:#1F3864;display:flex;align-items:center;gap:8px}
+.config-arrow{font-size:12px;color:#888;transition:transform .2s}
+.config-arrow.open{transform:rotate(180deg)}
+.config-body{display:none;border-top:1px solid #e0e6f0;padding:16px 18px}
+.config-body.open{display:block}
+
+.config-tabs{display:flex;gap:0;margin-bottom:14px;border:1px solid #e0e6f0;border-radius:8px;overflow:hidden}
+.config-tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;background:#f8f9fc;color:#666;transition:background .15s,color .15s}
+.config-tab.active{background:#1F3864;color:#fff}
+
+.config-panel{display:none}
+.config-panel.active{display:block}
+
+.field-group{margin-bottom:14px}
+.field-group-title{font-size:11px;font-weight:700;text-transform:uppercase;color:#999;letter-spacing:.5px;margin-bottom:8px}
+.field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px}
+
+.field-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid #e8ecf4;background:#fafbfc;cursor:pointer;transition:background .12s,border-color .12s}
+.field-item:hover{background:#eef2fb;border-color:#b8c8e8}
+.field-item.checked{background:#e8f0fb;border-color:#7aa3d4}
+.field-item.locked{cursor:default;opacity:.6}
+.field-item input[type=checkbox]{accent-color:#1F3864;width:14px;height:14px;flex-shrink:0}
+.field-item label{font-size:12px;color:#333;cursor:pointer;line-height:1.3}
+.field-item.locked label{cursor:default}
+
+/* DROP */
+.drop-zone{border:2px dashed #aab4c8;border-radius:12px;padding:2.5rem 1rem;text-align:center;cursor:pointer;background:#fff;transition:background .2s,border-color .2s}
+.drop-zone:hover,.drop-zone.over{background:#e8f0fb;border-color:#1F3864}
+.drop-icon{font-size:36px;display:block;margin-bottom:8px}
+.drop-label{font-size:15px;font-weight:600;color:#1F3864}
+.drop-hint{font-size:12px;color:#888;margin-top:5px}
+#file-input{display:none}
+
+.progress-wrap{margin:12px 0 4px;display:none}
+.progress-bar-bg{height:6px;background:#dde3ee;border-radius:3px;overflow:hidden}
+.progress-bar-fill{height:100%;background:#1F3864;border-radius:3px;transition:width .2s;width:0%}
+.progress-pct{font-size:12px;color:#666;text-align:right;margin-top:4px}
+
+.stats{display:none;grid-template-columns:repeat(3,1fr);gap:12px;margin:1.2rem 0}
+.stat{background:#fff;border-radius:10px;padding:12px 16px;border:1px solid #e0e6f0;text-align:center}
+.stat-n{font-size:26px;font-weight:700;color:#1F3864}
+.stat-l{font-size:12px;color:#777;margin-top:3px}
+
+.log-box{background:#fff;border:1px solid #e0e6f0;border-radius:10px;padding:12px 14px;max-height:160px;overflow-y:auto;font-family:'Courier New',monospace;font-size:12px;margin:1rem 0;display:none;line-height:1.6}
+.ok{color:#1a7a4a}.err{color:#b91c1c}.inf{color:#555}
+
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:1rem}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:background .15s,opacity .15s}
+.btn-primary{background:#1F3864;color:#fff}
+.btn-primary:hover{background:#162b4a}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-secondary{background:#e8ecf4;color:#333}
+.btn-secondary:hover{background:#d5dbed}
+
+.notice{font-size:12px;color:#777;margin-top:1.2rem;padding:10px 14px;border-left:3px solid #aab4c8;background:#f8f9fc;border-radius:0 8px 8px 0;line-height:1.6}
+.notice strong{color:#1F3864}
+footer{text-align:center;font-size:11px;color:#aaa;margin-top:2rem}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>📄 Extrator NF-e</h1>
+    <p>Digite a senha para acessar</p>
+    <input type="password" id="pwd-input" placeholder="Senha" onkeydown="if(event.key==='Enter')tentarLogin()">
+    <button onclick="tentarLogin()">Entrar</button>
+    <div class="login-error" id="login-error">Senha incorreta. Tente novamente.</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+<div class="container">
+  <header>
+    <h1>📄 Extrator NF-e → Excel</h1>
+    <p>Configure os campos, selecione os XMLs e baixe o Excel consolidado.</p>
+  </header>
+
+  <!-- CONFIGURAR CAMPOS -->
+  <div class="config-wrap">
+    <div class="config-header" onclick="toggleConfig()">
+      <div class="config-title">⚙️ Configurar campos do Excel</div>
+      <div class="config-arrow" id="cfg-arrow">▼</div>
+    </div>
+    <div class="config-body" id="cfg-body">
+
+      <div class="config-tabs">
+        <div class="config-tab active" onclick="switchTab('notas',this)">Aba Notas</div>
+        <div class="config-tab" onclick="switchTab('itens',this)">Aba Itens</div>
+      </div>
+
+      <!-- PAINEL NOTAS -->
+      <div class="config-panel active" id="panel-notas">
+        <div class="field-group">
+          <div class="field-group-title">Identificação (fixos)</div>
+          <div class="field-grid" id="fg-nota-id"></div>
+        </div>
+        <div class="field-group">
+          <div class="field-group-title">Emitente</div>
+          <div class="field-grid" id="fg-nota-emit"></div>
+        </div>
+        <div class="field-group">
+          <div class="field-group-title">Destinatário</div>
+          <div class="field-grid" id="fg-nota-dest"></div>
+        </div>
+        <div class="field-group">
+          <div class="field-group-title">Valores e Impostos</div>
+          <div class="field-grid" id="fg-nota-val"></div>
+        </div>
+        <div class="field-group">
+          <div class="field-group-title">Informações adicionais</div>
+          <div class="field-grid" id="fg-nota-info"></div>
+        </div>
+      </div>
+
+      <!-- PAINEL ITENS -->
+      <div class="config-panel" id="panel-itens">
+        <div class="field-group">
+          <div class="field-group-title">Identificação (fixos)</div>
+          <div class="field-grid" id="fg-item-id"></div>
+        </div>
+        <div class="field-group">
+          <div class="field-group-title">Referência da Nota</div>
+          <div class="field-grid" id="fg-item-nota"></div>
+        </div>
+        <div class="field-group">
+          <div class="field-group-title">Produto</div>
+          <div class="field-grid" id="fg-item-prod"></div>
+        </div>
+        <div class="field-group">
+          <div class="field-group-title">Impostos</div>
+          <div class="field-grid" id="fg-item-imp"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- DROP ZONE -->
+  <div class="drop-zone" id="drop" onclick="document.getElementById('file-input').click()">
+    <span class="drop-icon">📂</span>
+    <div class="drop-label" id="drop-label">Clique ou arraste os arquivos XML aqui</div>
+    <div class="drop-hint">Ctrl+A na pasta para selecionar todos · Arraste a pasta diretamente (Chrome/Edge)</div>
+  </div>
+  <input type="file" id="file-input" accept=".xml" multiple>
+
+  <div class="progress-wrap" id="prog-wrap">
+    <div class="progress-bar-bg"><div class="progress-bar-fill" id="pbar"></div></div>
+    <div class="progress-pct" id="ppct">0%</div>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat"><div class="stat-n" id="s-notas">0</div><div class="stat-l">Notas processadas</div></div>
+    <div class="stat"><div class="stat-n" id="s-itens">0</div><div class="stat-l">Itens extraídos</div></div>
+    <div class="stat"><div class="stat-n" id="s-erros">0</div><div class="stat-l">Erros</div></div>
+  </div>
+
+  <div class="log-box" id="log"></div>
+
+  <div class="actions">
+    <button class="btn btn-primary"   id="btn-excel"  disabled onclick="exportar()">⬇ Baixar Excel</button>
+    <button class="btn btn-secondary" id="btn-limpar" style="display:none" onclick="limpar()">🔄 Limpar e recomeçar</button>
+  </div>
+
+  <div class="notice">
+    <strong>Privacidade:</strong> Os XMLs são processados pelo seu navegador e nunca enviados para nenhum servidor.<br>
+    <strong>Dica:</strong> Altere os campos antes ou depois de processar — o Excel sempre reflete a seleção atual.
+  </div>
+</div>
+<footer>Extrator NF-e v2.0 · Uso interno</footer>
+</div>
+
+<script>
+/* ── LOGIN ── */
+const SENHA = 'st123';
+function tentarLogin(){
+  if(document.getElementById('pwd-input').value===SENHA){
+    sessionStorage.setItem('nfe_auth','ok');
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='block';
+  } else {
+    document.getElementById('login-error').style.display='block';
+    document.getElementById('pwd-input').value='';
+    document.getElementById('pwd-input').focus();
+  }
+}
+(function(){ if(sessionStorage.getItem('nfe_auth')==='ok'){ document.getElementById('login-screen').style.display='none'; document.getElementById('app').style.display='block'; } })();
+
+/* ── DEFINIÇÃO DOS CAMPOS ── */
+// locked=true: sempre incluído, não pode desmarcar
+// on=true: marcado por padrão
+const CAMPOS_NOTA = [
+  // Identificação (fixos)
+  {id:'chave',    label:'Chave de Acesso', group:'nota-id',   locked:true, on:true},
+  {id:'numero',   label:'Número',          group:'nota-id',   locked:true, on:true},
+  {id:'serie',    label:'Série',           group:'nota-id',   locked:true, on:true},
+  {id:'data',     label:'Data Emissão',    group:'nota-id',   locked:true, on:true},
+  // Emitente
+  {id:'emitCNPJ', label:'CNPJ Emitente',  group:'nota-emit', locked:false, on:true},
+  {id:'emitNome', label:'Emitente',        group:'nota-emit', locked:false, on:true},
+  {id:'ufEmissao',label:'UF Emissão',      group:'nota-emit', locked:false, on:true},
+  {id:'emitIE',   label:'IE Emitente',     group:'nota-emit', locked:false, on:false},
+  // Destinatário
+  {id:'destDoc',  label:'CNPJ/CPF Dest.', group:'nota-dest', locked:false, on:true},
+  {id:'destNome', label:'Destinatário',    group:'nota-dest', locked:false, on:true},
+  {id:'destIE',   label:'IE Dest.',        group:'nota-dest', locked:false, on:false},
+  {id:'destMun',  label:'Município Dest.', group:'nota-dest', locked:false, on:false},
+  {id:'destUF',   label:'UF Dest.',        group:'nota-dest', locked:false, on:false},
+  {id:'destEmail',label:'Email Dest.',     group:'nota-dest', locked:false, on:false},
+  // Valores
+  {id:'vNF',      label:'Valor Total',     group:'nota-val',  locked:false, on:true},
+  {id:'vDesc',    label:'Desconto Total',  group:'nota-val',  locked:false, on:false},
+  {id:'vFrete',   label:'Frete',           group:'nota-val',  locked:false, on:false},
+  {id:'vSeg',     label:'Seguro',          group:'nota-val',  locked:false, on:false},
+  {id:'vOutro',   label:'Outras Despesas', group:'nota-val',  locked:false, on:false},
+  {id:'vBC',      label:'BC ICMS',         group:'nota-val',  locked:false, on:true},
+  {id:'vICMS',    label:'ICMS',            group:'nota-val',  locked:false, on:true},
+  {id:'vBCST',    label:'BC ICMS-ST',      group:'nota-val',  locked:false, on:true},
+  {id:'vST',      label:'ICMS-ST',         group:'nota-val',  locked:false, on:true},
+  {id:'vIPI',     label:'IPI',             group:'nota-val',  locked:false, on:true},
+  {id:'vPIS',     label:'PIS',             group:'nota-val',  locked:false, on:true},
+  {id:'vCOFINS',  label:'COFINS',          group:'nota-val',  locked:false, on:true},
+  {id:'vTotTrib', label:'Total Tributos',  group:'nota-val',  locked:false, on:false},
+  // Informações adicionais
+  {id:'natOp',    label:'Natureza da Operação', group:'nota-info', locked:false, on:false},
+  {id:'tpNF',     label:'Tipo (Entrada/Saída)', group:'nota-info', locked:false, on:false},
+  {id:'finNFe',   label:'Finalidade da NF-e',   group:'nota-info', locked:false, on:false},
+  {id:'transpMod',label:'Modalidade Frete',      group:'nota-info', locked:false, on:false},
+  {id:'transpNome',label:'Transportadora',       group:'nota-info', locked:false, on:false},
+];
+
+const CAMPOS_ITEM = [
+  // Identificação (fixos)
+  {id:'chave',   label:'Chave de Acesso',   group:'item-id',   locked:true, on:true},
+  {id:'numero',  label:'Nº Nota',           group:'item-id',   locked:true, on:true},
+  {id:'nitem',   label:'Item',              group:'item-id',   locked:true, on:true},
+  // Referência da nota
+  {id:'emitCNPJ',label:'CNPJ Emitente',     group:'item-nota', locked:false, on:true},
+  {id:'emitNome',label:'Emitente',          group:'item-nota', locked:false, on:true},
+  {id:'ufEmissao',label:'UF Emissão',       group:'item-nota', locked:false, on:true},
+  {id:'destDoc', label:'CNPJ/CPF Dest.',    group:'item-nota', locked:false, on:true},
+  {id:'destNome',label:'Destinatário',      group:'item-nota', locked:false, on:true},
+  // Produto
+  {id:'cProd',   label:'Cód. Produto',      group:'item-prod', locked:true, on:true},
+  {id:'xProd',   label:'Descrição',         group:'item-prod', locked:true, on:true},
+  {id:'NCM',     label:'NCM',               group:'item-prod', locked:false, on:true},
+  {id:'CEST',    label:'CEST',              group:'item-prod', locked:false, on:true},
+  {id:'CFOP',    label:'CFOP',              group:'item-prod', locked:false, on:true},
+  {id:'uCom',    label:'Unidade',           group:'item-prod', locked:false, on:true},
+  {id:'qCom',    label:'Quantidade',        group:'item-prod', locked:true, on:true},
+  {id:'vUnCom',  label:'Vlr. Unitário',     group:'item-prod', locked:false, on:true},
+  {id:'vProd',   label:'Vlr. Produto',      group:'item-prod', locked:true, on:true},
+  {id:'vDesc',   label:'Desconto Item',     group:'item-prod', locked:false, on:false},
+  // Impostos
+  {id:'CST',     label:'CST/CSOSN',         group:'item-imp',  locked:false, on:false},
+  {id:'pICMS',   label:'Alíq. ICMS (%)',    group:'item-imp',  locked:false, on:false},
+  {id:'bcICMS',  label:'BC ICMS',           group:'item-imp',  locked:false, on:true},
+  {id:'icms',    label:'ICMS',              group:'item-imp',  locked:false, on:true},
+  {id:'pICMSST', label:'Alíq. ICMS-ST (%)',group:'item-imp',  locked:false, on:false},
+  {id:'bcST',    label:'BC ICMS-ST',        group:'item-imp',  locked:false, on:true},
+  {id:'icmsST',  label:'ICMS-ST',           group:'item-imp',  locked:false, on:true},
+  {id:'ipi',     label:'IPI',               group:'item-imp',  locked:false, on:true},
+  {id:'pis',     label:'PIS',               group:'item-imp',  locked:false, on:true},
+  {id:'cofins',  label:'COFINS',            group:'item-imp',  locked:false, on:true},
+];
+
+// estado dos checkboxes
+const estadoNota = {};
+const estadoItem = {};
+CAMPOS_NOTA.forEach(f => estadoNota[f.id] = f.on);
+CAMPOS_ITEM.forEach(f => estadoItem[f.id] = f.on);
+
+function renderCampos(campos, estado, grupoPrefixo){
+  const grupos = {};
+  campos.forEach(f => { if(!grupos[f.group]) grupos[f.group]=[]; grupos[f.group].push(f); });
+  Object.entries(grupos).forEach(([grp, fields]) => {
+    const container = document.getElementById('fg-'+grp);
+    if(!container) return;
+    container.innerHTML = '';
+    fields.forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'field-item'+(estado[f.id]?' checked':'')+(f.locked?' locked':'');
+      item.innerHTML = `<input type="checkbox" id="chk-${grupoPrefixo}-${f.id}" ${estado[f.id]?'checked':''} ${f.locked?'disabled':''}>
+        <label for="chk-${grupoPrefixo}-${f.id}">${f.label}</label>`;
+      if(!f.locked){
+        item.addEventListener('click', ()=>{
+          estado[f.id] = !estado[f.id];
+          item.classList.toggle('checked', estado[f.id]);
+          item.querySelector('input').checked = estado[f.id];
+        });
+      }
+      container.appendChild(item);
+    });
+  });
+}
+
+function toggleConfig(){
+  const body = document.getElementById('cfg-body');
+  const arrow = document.getElementById('cfg-arrow');
+  body.classList.toggle('open');
+  arrow.classList.toggle('open');
+}
+
+function switchTab(tab, el){
+  document.querySelectorAll('.config-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.config-panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-'+tab).classList.add('active');
+}
+
+renderCampos(CAMPOS_NOTA, estadoNota, 'n');
+renderCampos(CAMPOS_ITEM, estadoItem, 'i');
+
+/* ── EXTRAÇÃO ── */
+const NS = 'http://www.portalfiscal.inf.br/nfe';
+let todasNotas = [], todosItens = [];
+
+function getNS(el,tag){ return el.getElementsByTagNameNS(NS,tag); }
+function txt(el,tag){ if(!el)return''; const f=el.getElementsByTagNameNS(NS,tag); return f.length?(f[0].textContent||'').trim():''; }
+function num(el,tag){ return parseFloat(txt(el,tag))||0; }
+
+const tpNFmap  = {'0':'Entrada','1':'Saída'};
+const finNFeMap = {'1':'Normal','2':'Complementar','3':'Ajuste','4':'Devolução'};
+const modFreteMap = {'0':'Emit./Rem.','1':'Dest./Rec.','2':'Terceiros','3':'Próprio Rem.','4':'Próprio Dest.','9':'Sem frete'};
+
+function extrairICMSItem(imp){
+  let icms=0,icmsST=0,bcICMS=0,bcST=0,CST='',pICMS=0,pICMSST=0;
+  if(!imp) return {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST};
+  const grupo = imp.getElementsByTagNameNS(NS,'ICMS')[0];
+  if(!grupo) return {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST};
+  for(const cst of grupo.children){
+    const get = (t) => { const el=cst.getElementsByTagNameNS(NS,t)[0]; return el?(el.textContent||'').trim():''; };
+    if(!CST){ CST = get('CST')||get('CSOSN'); }
+    const vi=get('vICMS'), vst=get('vICMSST'), vbc=get('vBC'), vbcs=get('vBCST');
+    const pi=get('pICMS'), pst=get('pICMSST');
+    if(vi)   icms   = parseFloat(vi)||0;
+    if(vst)  icmsST = parseFloat(vst)||0;
+    if(vbc)  bcICMS = parseFloat(vbc)||0;
+    if(vbcs) bcST   = parseFloat(vbcs)||0;
+    if(pi)   pICMS  = parseFloat(pi)||0;
+    if(pst)  pICMSST= parseFloat(pst)||0;
+  }
+  return {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST};
+}
+
+function extrairImposto(imp,grupo,campo){
+  if(!imp) return 0;
+  const g=imp.getElementsByTagNameNS(NS,grupo)[0];
+  if(!g) return 0;
+  for(const c of g.children){ const v=c.getElementsByTagNameNS(NS,campo)[0]; if(v) return parseFloat(v.textContent)||0; }
+  return 0;
+}
+
+function parseNFe(xmlStr){
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr,'application/xml');
+  if(doc.querySelector('parsererror')) throw new Error('XML mal formado');
+  const infNFe = getNS(doc,'infNFe')[0];
+  if(!infNFe) throw new Error('infNFe não encontrado');
+
+  const chave    = (infNFe.getAttribute('Id')||'').replace('NFe','');
+  const ide      = getNS(doc,'ide')[0];
+  const emit     = getNS(doc,'emit')[0];
+  const dest     = getNS(doc,'dest')[0];
+  const ender    = emit ? emit.getElementsByTagNameNS(NS,'enderEmit')[0] : null;
+  const enderDest= dest ? dest.getElementsByTagNameNS(NS,'enderDest')[0] : null;
+  const icmsTot  = getNS(doc,'ICMSTot')[0];
+  const transp   = getNS(doc,'transp')[0];
+  const transpNome = transp ? (txt(transp,'xNome')||txt(transp,'xNomeTransp')) : '';
+  const transpMod  = transp ? txt(transp,'modFrete') : '';
+
+  const dhEmi = txt(ide,'dhEmi')||txt(ide,'dEmi');
+
+  const nota = {
+    chave,
+    numero:   txt(ide,'nNF'),
+    serie:    txt(ide,'serie'),
+    data:     dhEmi?dhEmi.substring(0,10):'',
+    natOp:    txt(ide,'natOp'),
+    tpNF:     tpNFmap[txt(ide,'tpNF')]||txt(ide,'tpNF'),
+    finNFe:   finNFeMap[txt(ide,'finNFe')]||txt(ide,'finNFe'),
+    emitCNPJ: txt(emit,'CNPJ'),
+    emitNome: txt(emit,'xNome'),
+    ufEmissao:ender?txt(ender,'UF'):txt(ide,'cUF'),
+    emitIE:   txt(emit,'IE'),
+    destDoc:  dest?(txt(dest,'CNPJ')||txt(dest,'CPF')):'',
+    destNome: dest?txt(dest,'xNome'):'',
+    destIE:   dest?txt(dest,'IE'):'',
+    destMun:  enderDest?txt(enderDest,'xMun'):'',
+    destUF:   enderDest?txt(enderDest,'UF'):'',
+    destEmail:dest?txt(dest,'email'):'',
+    vNF:      num(icmsTot,'vNF'),
+    vBC:      num(icmsTot,'vBC'),
+    vICMS:    num(icmsTot,'vICMS'),
+    vBCST:    num(icmsTot,'vBCST'),
+    vST:      num(icmsTot,'vST'),
+    vIPI:     num(icmsTot,'vIPI'),
+    vPIS:     num(icmsTot,'vPIS'),
+    vCOFINS:  num(icmsTot,'vCOFINS'),
+    vDesc:    num(icmsTot,'vDesc'),
+    vFrete:   num(icmsTot,'vFrete'),
+    vSeg:     num(icmsTot,'vSeg'),
+    vOutro:   num(icmsTot,'vOutro'),
+    vTotTrib: num(icmsTot,'vTotTrib'),
+    transpMod:modFreteMap[transpMod]||transpMod,
+    transpNome,
+  };
+
+  const itens = [];
+  for(const det of getNS(doc,'det')){
+    const prod = det.getElementsByTagNameNS(NS,'prod')[0];
+    const imp  = det.getElementsByTagNameNS(NS,'imposto')[0];
+    const {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST} = extrairICMSItem(imp);
+    itens.push({
+      chave, numero:nota.numero,
+      emitCNPJ:nota.emitCNPJ, emitNome:nota.emitNome, ufEmissao:nota.ufEmissao,
+      destDoc:nota.destDoc,   destNome:nota.destNome,
+      nitem: det.getAttribute('nItem')||'',
+      cProd: txt(prod,'cProd'), xProd:txt(prod,'xProd'),
+      NCM:   txt(prod,'NCM'),   CEST: txt(prod,'CEST'),
+      CFOP:  txt(prod,'CFOP'),  uCom: txt(prod,'uCom'),
+      qCom:  num(prod,'qCom'),  vUnCom:num(prod,'vUnCom'), vProd:num(prod,'vProd'),
+      vDesc: num(prod,'vDesc'),
+      CST, pICMS, bcICMS, icms, pICMSST, bcST, icmsST,
+      ipi:    extrairImposto(imp,'IPI','vIPI'),
+      pis:    extrairImposto(imp,'PIS','vPIS'),
+      cofins: extrairImposto(imp,'COFINS','vCOFINS'),
+    });
+  }
+  return {nota, itens};
+}
+
+/* ── UI ── */
+function addLog(msg,tipo){ const el=document.getElementById('log'); el.style.display='block'; el.innerHTML+=`<div class="${tipo}">${msg}</div>`; el.scrollTop=el.scrollHeight; }
+
+function limpar(){
+  todasNotas=[];todosItens=[];
+  document.getElementById('log').innerHTML='';
+  ['log','stats','prog-wrap'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('btn-excel').disabled=true;
+  document.getElementById('btn-limpar').style.display='none';
+  document.getElementById('drop-label').textContent='Clique ou arraste os arquivos XML aqui';
+  document.getElementById('pbar').style.width='0%';
+  document.getElementById('ppct').textContent='0%';
+  document.getElementById('file-input').value='';
+}
+
+async function processar(files){
+  limpar();
+  const arr=Array.from(files).filter(f=>f.name.toLowerCase().endsWith('.xml'));
+  if(!arr.length){addLog('Nenhum arquivo .xml encontrado.','err');return;}
+  document.getElementById('stats').style.display='grid';
+  document.getElementById('prog-wrap').style.display='block';
+  document.getElementById('drop-label').textContent=`Processando ${arr.length} arquivo(s)…`;
+  let ok=0,erros=0;
+  for(let i=0;i<arr.length;i++){
+    const f=arr[i];
+    try{
+      const {nota,itens}=parseNFe(await f.text());
+      todasNotas.push(nota); todosItens.push(...itens); ok++;
+      addLog(`✓ ${f.name} → NF ${nota.numero||'?'} | UF: ${nota.ufEmissao||'?'} | ${itens.length} item(ns)`,'ok');
+    }catch(e){ erros++; addLog(`✗ ${f.name}: ${e.message}`,'err'); }
+    const pct=Math.round(((i+1)/arr.length)*100);
+    document.getElementById('pbar').style.width=pct+'%';
+    document.getElementById('ppct').textContent=pct+'%';
+    document.getElementById('s-notas').textContent=ok;
+    document.getElementById('s-itens').textContent=todosItens.length;
+    document.getElementById('s-erros').textContent=erros;
+    await new Promise(r=>setTimeout(r,0));
+  }
+  document.getElementById('drop-label').textContent='Clique ou arraste os arquivos XML aqui';
+  if(ok>0){
+    document.getElementById('btn-excel').disabled=false;
+    document.getElementById('btn-limpar').style.display='inline-flex';
+    addLog(`─── Concluído: ${ok} nota(s) | ${todosItens.length} item(ns) | ${erros} erro(s)`,'inf');
+  }
+}
+
+/* ── EXPORTAÇÃO ── */
+function colW(arr){return arr.map(w=>({wch:w}));}
+
+function exportar(){
+  const wb=XLSX.utils.book_new();
+
+  // Colunas ativas para Notas
+  const colsNota = CAMPOS_NOTA.filter(f=>estadoNota[f.id]);
+  const hNotas   = colsNota.map(f=>f.label);
+  const dNotas   = todasNotas.map(n=>colsNota.map(f=>n[f.id]??''));
+  const wsN=XLSX.utils.aoa_to_sheet([hNotas,...dNotas]);
+  wsN['!cols']=colsNota.map(()=>({wch:18}));
+  XLSX.utils.book_append_sheet(wb,wsN,'Notas');
+
+  // Colunas ativas para Itens
+  const colsItem = CAMPOS_ITEM.filter(f=>estadoItem[f.id]);
+  const hItens   = colsItem.map(f=>f.label);
+  const dItens   = todosItens.map(i=>colsItem.map(f=>i[f.id]??''));
+  const wsI=XLSX.utils.aoa_to_sheet([hItens,...dItens]);
+  wsI['!cols']=colsItem.map(()=>({wch:18}));
+  XLSX.utils.book_append_sheet(wb,wsI,'Itens');
+
+  const hoje=new Date().toISOString().substring(0,10);
+  XLSX.writeFile(wb,`nfe_consolidado_${hoje}.xlsx`);
+}
+
+/* ── DRAG & DROP ── */
+const drop=document.getElementById('drop');
+drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('over');});
+drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');processar(e.dataTransfer.files);});
+document.getElementById('file-input').addEventListener('change',e=>processar(e.target.files));
+</script>
+</body>
+</html>

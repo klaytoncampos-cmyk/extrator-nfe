@@ -355,6 +355,8 @@ const CAMPOS_NOTA=[
   {id:'destCEP',    label:'CEP',                      cat:'dest',  locked:false, on:false},
   {id:'destFone',   label:'Telefone',                 cat:'dest',  locked:false, on:false},
   {id:'destEmail',  label:'Email',                    cat:'dest',  locked:false, on:false},
+  {id:'entregaUF',  label:'UF de Entrega',            cat:'dest',  locked:false, on:false},
+  {id:'entregaMun', label:'Município de Entrega',      cat:'dest',  locked:false, on:false},
   {id:'vNF',        label:'Valor Total',              cat:'totais',locked:false, on:true},
   {id:'vDesc',      label:'Desconto',                 cat:'totais',locked:false, on:false},
   {id:'vFrete',     label:'Frete',                    cat:'totais',locked:false, on:false},
@@ -778,6 +780,7 @@ function parseNFe(xmlStr){
   const enderDest=dest?dest.getElementsByTagNameNS(NS,'enderDest')[0]:null;
   const tot=getNS(doc,'ICMSTot')[0],transp=getNS(doc,'transp')[0],cobr=getNS(doc,'cobr')[0];
   const fat=cobr?cobr.getElementsByTagNameNS(NS,'fat')[0]:null;
+  const entrega=getNS(doc,'entrega')[0];
   const infAdic=getNS(doc,'infAdic')[0];
   const vol=transp?transp.getElementsByTagNameNS(NS,'vol')[0]:null;
   const veicT=transp?transp.getElementsByTagNameNS(NS,'veicTransp')[0]:null;
@@ -815,6 +818,8 @@ function parseNFe(xmlStr){
     fatVDesc:fat?num(fat,'vDesc'):0,fatVLiq:fat?num(fat,'vLiq'):0,
     duplicatas:dups,chNFeRef:nfeRefs,
     infCpl:infAdic?txt(infAdic,'infCpl'):'',infAdFisco:infAdic?txt(infAdic,'infAdFisco'):'',
+    entregaUF:entrega?txt(entrega,'UF'):'',
+    entregaMun:entrega?txt(entrega,'xMun'):'',
   };
   const itens=[];
   for(const det of getNS(doc,'det')){
@@ -872,7 +877,22 @@ function computeAlertas(){
   // CEST com ICMS-ST zerado
   const cestSemST=todosItens.filter(i=>i.CEST&&i.CEST!==''&&(!i.icmsST||i.icmsST===0));
   if(cestSemST.length) alertas.push({tipo:'info',titulo:`🔍 ${cestSemST.length} item(ns) com CEST preenchido mas ICMS-ST zerado`,lista:cestSemST.map(i=>`NF ${i.numero} item ${i.nitem} — ${i.xProd}`)});
-  if(!alertas.length){ panel.style.display='none'; return; }
+  // Veículos com UF de entrega diferente da UF do destinatário
+  const NCM_VEIC=['8701','8702','8703','8704','8705'];
+  function isVeiculo(item){ return (item.CEST&&item.CEST.startsWith('25.'))||NCM_VEIC.some(n=>item.NCM&&item.NCM.startsWith(n)); }
+  const notaEntregaMap=new Map(todasNotas.map(n=>[n.chave,n]));
+  const veicEntregaDivergente=[];
+  todosItens.forEach(item=>{
+    if(!isVeiculo(item)) return;
+    const nota=notaEntregaMap.get(item.chave);
+    if(!nota||!nota.entregaUF) return;
+    if(nota.entregaUF!==nota.destUF){
+      veicEntregaDivergente.push(`NF ${nota.numero} (${nota.serie}) — Dest: ${nota.destUF||'?'} — Entrega: ${nota.entregaUF} (${nota.entregaMun||'?'}) — ${item.xProd}`);
+    }
+  });
+  // deduplica por chave
+  const veicDedup=[...new Map(veicEntregaDivergente.map(v=>[v,v])).values()];
+  if(veicDedup.length) alertas.push({tipo:'danger',titulo:`🚗 ${veicDedup.length} veículo(s) com entrega em UF diferente do destinatário`,lista:veicDedup});
   panel.style.display='block';
   alertas.forEach(a=>{
     const blk=document.createElement('div');
@@ -968,4 +988,3 @@ document.getElementById('file-input').addEventListener('change',e=>processarEntr
 </script>
 </body>
 </html>
-

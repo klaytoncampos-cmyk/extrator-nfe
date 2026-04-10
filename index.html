@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Extrator NF-e → Excel</title>
+<title>Extrator NF-e / ST</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;background:#f4f6f9;color:#1a1a2e;min-height:100vh;padding:2rem 1rem}
+body{font-family:Arial,sans-serif;background:#f4f6f9;color:#1a1a2e;min-height:100vh;padding:1.5rem 1rem}
 
 /* LOGIN */
 #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem;position:fixed;inset:0;background:#f4f6f9;z-index:999}
@@ -16,78 +17,145 @@ body{font-family:Arial,sans-serif;background:#f4f6f9;color:#1a1a2e;min-height:10
 .login-card p{font-size:13px;color:#777;margin-bottom:1.8rem}
 .login-card input[type=password]{width:100%;padding:10px 14px;border-radius:8px;border:1.5px solid #c8d0e0;font-size:15px;margin-bottom:12px;outline:none;transition:border-color .2s}
 .login-card input[type=password]:focus{border-color:#1F3864}
-.login-card button{width:100%;padding:11px;background:#1F3864;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s}
+.login-card button{width:100%;padding:11px;background:#1F3864;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
 .login-card button:hover{background:#162b4a}
 .login-error{font-size:13px;color:#b91c1c;margin-top:10px;display:none}
 
 /* APP */
 #app{display:none}
-.container{max-width:820px;margin:0 auto}
-header{text-align:center;margin-bottom:1.8rem}
-header h1{font-size:22px;font-weight:700;color:#1F3864}
-header p{font-size:13px;color:#666;margin-top:5px}
+.layout{display:grid;grid-template-columns:1fr 360px;gap:1.2rem;align-items:start;max-width:1200px;margin:0 auto}
+@media(max-width:820px){.layout{grid-template-columns:1fr}}
 
-/* CONFIGURAR CAMPOS */
-.config-wrap{background:#fff;border:1px solid #e0e6f0;border-radius:12px;margin-bottom:1.4rem;overflow:hidden}
-.config-header{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;cursor:pointer;user-select:none}
-.config-header:hover{background:#f8f9fc}
-.config-title{font-size:14px;font-weight:600;color:#1F3864;display:flex;align-items:center;gap:8px}
-.config-arrow{font-size:12px;color:#888;transition:transform .2s}
-.config-arrow.open{transform:rotate(180deg)}
-.config-body{display:none;border-top:1px solid #e0e6f0;padding:16px 18px}
-.config-body.open{display:block}
+/* HEADER */
+header{margin-bottom:1.2rem}
+header h1{font-size:20px;font-weight:700;color:#1F3864;line-height:1.2}
+header p{font-size:12px;color:#777;margin-top:4px}
 
-.config-tabs{display:flex;gap:0;margin-bottom:14px;border:1px solid #e0e6f0;border-radius:8px;overflow:hidden}
-.config-tab{flex:1;padding:8px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;background:#f8f9fc;color:#666;transition:background .15s,color .15s}
-.config-tab.active{background:#1F3864;color:#fff}
-
-.config-panel{display:none}
-.config-panel.active{display:block}
-
-.field-group{margin-bottom:14px}
-.field-group-title{font-size:11px;font-weight:700;text-transform:uppercase;color:#999;letter-spacing:.5px;margin-bottom:8px}
-.field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px}
-
-.field-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid #e8ecf4;background:#fafbfc;cursor:pointer;transition:background .12s,border-color .12s}
-.field-item:hover{background:#eef2fb;border-color:#b8c8e8}
-.field-item.checked{background:#e8f0fb;border-color:#7aa3d4}
-.field-item.locked{cursor:default;opacity:.6}
-.field-item input[type=checkbox]{accent-color:#1F3864;width:14px;height:14px;flex-shrink:0}
-.field-item label{font-size:12px;color:#333;cursor:pointer;line-height:1.3}
-.field-item.locked label{cursor:default}
+/* FILTROS */
+.filter-wrap{background:#fff;border:1px solid #e0e6f0;border-radius:10px;overflow:hidden;margin-bottom:.8rem;transition:border-color .2s,border-left-width .2s}
+.filter-wrap.ativo{border-left:3px solid #1F3864;border-color:#1F3864}
+.filter-wrap.ativo .filter-title{color:#1F3864}
+.filter-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none}
+.filter-header:hover{background:#f8f9fc}
+.filter-title{font-size:13px;font-weight:700;color:#555;display:flex;align-items:center;gap:6px}
+.filter-badge{background:#1F3864;color:#fff;font-size:10px;padding:2px 7px;border-radius:8px}
+.filter-arrow{font-size:11px;color:#aaa;transition:transform .2s}
+.filter-arrow.open{transform:rotate(180deg)}
+.filter-body{display:none;padding:12px 14px;border-top:1px solid #e0e6f0}
+.filter-body.open{display:block}
+.filter-row{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.filter-row:last-child{margin-bottom:0}
+.filter-label{font-size:12px;font-weight:700;color:#444;min-width:110px;padding-top:3px}
+.filter-controls{display:flex;flex-direction:column;gap:5px;flex:1}
+.filter-radios{display:flex;gap:10px;flex-wrap:wrap}
+.filter-radio{display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer}
+.filter-radio input{accent-color:#1F3864}
+.uf-picker{display:none;flex-wrap:wrap;gap:4px;margin-top:4px}
+.uf-picker.show{display:flex}
+.uf-btn{padding:2px 7px;border-radius:10px;border:1px solid #c8d4e8;background:#f4f7fc;font-size:11px;font-weight:600;cursor:pointer;color:#1F3864;transition:all .1s}
+.uf-btn.sel{background:#1F3864;color:#fff;border-color:#1F3864}
+.filter-counter{font-size:12px;color:#1F3864;background:#e8f0fb;border-radius:7px;padding:7px 12px;margin-bottom:.8rem;font-weight:600;display:none}
 
 /* DROP */
-.drop-zone{border:2px dashed #aab4c8;border-radius:12px;padding:2.5rem 1rem;text-align:center;cursor:pointer;background:#fff;transition:background .2s,border-color .2s}
+.drop-zone{border:2px dashed #aab4c8;border-radius:10px;padding:2rem 1rem;text-align:center;cursor:pointer;background:#fff;transition:background .2s,border-color .2s;margin-bottom:.8rem}
 .drop-zone:hover,.drop-zone.over{background:#e8f0fb;border-color:#1F3864}
-.drop-icon{font-size:36px;display:block;margin-bottom:8px}
-.drop-label{font-size:15px;font-weight:600;color:#1F3864}
-.drop-hint{font-size:12px;color:#888;margin-top:5px}
+.drop-icon{font-size:30px;display:block;margin-bottom:6px}
+.drop-label{font-size:14px;font-weight:600;color:#1F3864}
+.drop-hint{font-size:11px;color:#888;margin-top:4px}
 #file-input{display:none}
 
-.progress-wrap{margin:12px 0 4px;display:none}
-.progress-bar-bg{height:6px;background:#dde3ee;border-radius:3px;overflow:hidden}
+/* PROGRESS */
+.progress-wrap{margin:8px 0 4px;display:none}
+.progress-bar-bg{height:5px;background:#dde3ee;border-radius:3px;overflow:hidden}
 .progress-bar-fill{height:100%;background:#1F3864;border-radius:3px;transition:width .2s;width:0%}
-.progress-pct{font-size:12px;color:#666;text-align:right;margin-top:4px}
+.progress-pct{font-size:11px;color:#666;text-align:right;margin-top:3px}
 
-.stats{display:none;grid-template-columns:repeat(3,1fr);gap:12px;margin:1.2rem 0}
-.stat{background:#fff;border-radius:10px;padding:12px 16px;border:1px solid #e0e6f0;text-align:center}
-.stat-n{font-size:26px;font-weight:700;color:#1F3864}
-.stat-l{font-size:12px;color:#777;margin-top:3px}
+/* STATS */
+.stats{display:none;grid-template-columns:repeat(3,1fr);gap:8px;margin:.8rem 0}
+.stat{background:#fff;border-radius:8px;padding:10px 12px;border:1px solid #e0e6f0;text-align:center}
+.stat-n{font-size:22px;font-weight:700;color:#1F3864}
+.stat-l{font-size:11px;color:#777;margin-top:2px}
 
-.log-box{background:#fff;border:1px solid #e0e6f0;border-radius:10px;padding:12px 14px;max-height:160px;overflow-y:auto;font-family:'Courier New',monospace;font-size:12px;margin:1rem 0;display:none;line-height:1.6}
-.ok{color:#1a7a4a}.err{color:#b91c1c}.inf{color:#555}
+/* ALERTAS */
+.alerts-panel{margin:.8rem 0;display:none}
+.alert-block{border-radius:8px;overflow:hidden;margin-bottom:6px;border:1px solid}
+.alert-block.warn{background:#fef9c3;border-color:#fde047;color:#854d0e}
+.alert-block.danger{background:#fce7f3;border-color:#f9a8d4;color:#9d174d}
+.alert-block.info{background:#dbeafe;border-color:#93c5fd;color:#1e40af}
+.alert-hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:700}
+.alert-body{padding:6px 12px 10px;font-size:11px;line-height:1.8;display:none}
+.alert-body.open{display:block}
+.alert-body ul{list-style:none;max-height:90px;overflow-y:auto}
+.alert-body li::before{content:"• ";opacity:.6}
 
-.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:1rem}
-.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:background .15s,opacity .15s}
+/* LOG */
+.log-box{background:#fff;border:1px solid #e0e6f0;border-radius:8px;padding:10px 12px;max-height:140px;overflow-y:auto;font-family:'Courier New',monospace;font-size:11px;margin:.8rem 0;display:none;line-height:1.6}
+.ok{color:#1a7a4a}.err{color:#b91c1c}.inf{color:#666}
+
+/* ACTIONS */
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:.8rem}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:background .15s,opacity .15s}
 .btn-primary{background:#1F3864;color:#fff}
 .btn-primary:hover{background:#162b4a}
 .btn-primary:disabled{opacity:.4;cursor:not-allowed}
 .btn-secondary{background:#e8ecf4;color:#333}
 .btn-secondary:hover{background:#d5dbed}
 
-.notice{font-size:12px;color:#777;margin-top:1.2rem;padding:10px 14px;border-left:3px solid #aab4c8;background:#f8f9fc;border-radius:0 8px 8px 0;line-height:1.6}
+.notice{font-size:11px;color:#888;margin-top:1rem;padding:8px 12px;border-left:3px solid #c8d4e8;background:#f8f9fc;border-radius:0 7px 7px 0;line-height:1.6}
 .notice strong{color:#1F3864}
-footer{text-align:center;font-size:11px;color:#aaa;margin-top:2rem}
+footer{text-align:center;font-size:10px;color:#bbb;margin-top:1.5rem}
+
+/* RIGHT PANEL */
+.right-col{position:sticky;top:1rem}
+.field-panel{background:#fff;border:1px solid #e0e6f0;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 2rem)}
+.fp-title{padding:10px 14px;font-size:13px;font-weight:700;color:#1F3864;border-bottom:1px solid #e0e6f0;flex-shrink:0}
+.fp-search{padding:8px 10px;border-bottom:1px solid #e0e6f0;flex-shrink:0;position:relative}
+.fp-search input{width:100%;padding:6px 28px 6px 10px;border-radius:7px;border:1px solid #c8d0e0;font-size:12px;outline:none;transition:border-color .2s}
+.fp-search input:focus{border-color:#1F3864}
+.fp-search-clear{position:absolute;right:16px;top:50%;transform:translateY(-50%);cursor:pointer;color:#aaa;font-size:14px;display:none;background:none;border:none;padding:0}
+.fp-tabs{display:flex;border-bottom:1px solid #e0e6f0;flex-shrink:0}
+.fp-tab{flex:1;padding:8px;text-align:center;font-size:12px;font-weight:700;cursor:pointer;background:#f8f9fc;color:#666;border:none;border-bottom:2px solid transparent;transition:all .15s}
+.fp-tab.active{background:#fff;color:#1F3864;border-bottom:2px solid #1F3864}
+.fp-panels{flex:1;overflow-y:auto;min-height:0}
+.fp-panel{display:none;padding:8px}
+.fp-panel.active{display:block}
+
+/* ACORDEÃO */
+.cat-block{margin-bottom:4px;border:1px solid #e8ecf4;border-radius:7px;overflow:hidden}
+.cat-block.hidden{display:none}
+.cat-hdr{display:flex;align-items:center;gap:6px;padding:7px 9px;cursor:pointer;background:#f8f9fc;user-select:none}
+.cat-hdr:hover{background:#eef2fb}
+.cat-name{font-size:11px;font-weight:700;color:#1F3864;flex:1}
+.cat-cnt{font-size:10px;background:#1F3864;color:#fff;padding:1px 6px;border-radius:8px;display:none}
+.cat-cnt.show{display:inline-block}
+.cat-all{font-size:10px;color:#888;text-decoration:underline;cursor:pointer;white-space:nowrap}
+.cat-arrow{font-size:9px;color:#bbb;transition:transform .2s;flex-shrink:0}
+.cat-arrow.open{transform:rotate(180deg)}
+.cat-body{display:none;padding:6px 8px}
+.cat-body.open{display:block}
+.fld-item{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:5px;border:1px solid #eef2f8;background:#fafbfc;cursor:pointer;margin-bottom:2px}
+.fld-item:hover{background:#eef2fb;border-color:#b8c8e8}
+.fld-item.checked{background:#e8f0fb;border-color:#7aa3d4}
+.fld-item.locked{opacity:.5;cursor:default}
+.fld-item.hidden{display:none}
+.fld-item input{accent-color:#1F3864;width:12px;height:12px;flex-shrink:0}
+.fld-item label{font-size:11px;color:#333;cursor:pointer;line-height:1.3;flex:1}
+.fld-item.locked label{cursor:default}
+mark{background:#fff3b0;border-radius:2px;padding:0 1px}
+
+/* ORDEM */
+.ordem-sub-tabs{display:flex;border-bottom:1px solid #e8ecf4;margin-bottom:8px}
+.ordem-sub-tab{flex:1;padding:6px;text-align:center;font-size:11px;font-weight:700;cursor:pointer;color:#888;background:none;border:none;border-bottom:2px solid transparent}
+.ordem-sub-tab.active{color:#1F3864;border-bottom:2px solid #1F3864}
+.ordem-hint{font-size:11px;color:#aaa;text-align:center;padding:4px 0 10px;font-style:italic}
+.order-list{display:flex;flex-direction:column;gap:3px}
+.order-item{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;border:1px solid #e0e6f0;background:#fff;cursor:grab;user-select:none}
+.order-item:hover{background:#f0f4fb}
+.order-item.dragging{opacity:.35;background:#e8f0fb}
+.order-item.drag-over{border-top:2px solid #1F3864}
+.drag-handle{color:#ccc;font-size:13px;cursor:grab;flex-shrink:0}
+.order-label{font-size:11px;color:#333;flex:1}
+.order-empty{font-size:11px;color:#bbb;text-align:center;padding:20px 0}
 </style>
 </head>
 <body>
@@ -95,119 +163,131 @@ footer{text-align:center;font-size:11px;color:#aaa;margin-top:2rem}
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-card">
-    <h1>📄 Extrator NF-e</h1>
+    <h1>📄 Extrator NF-e / ST</h1>
     <p>Digite a senha para acessar</p>
     <input type="password" id="pwd-input" placeholder="Senha" onkeydown="if(event.key==='Enter')tentarLogin()">
     <button onclick="tentarLogin()">Entrar</button>
-    <div class="login-error" id="login-error">Senha incorreta. Tente novamente.</div>
+    <div class="login-error" id="login-error">Senha incorreta.</div>
   </div>
 </div>
 
 <!-- APP -->
 <div id="app">
-<div class="container">
-  <header>
-    <h1>📄 Extrator NF-e → Excel</h1>
-    <p>Configure os campos, selecione os XMLs e baixe o Excel consolidado.</p>
-  </header>
+<div class="layout">
 
-  <!-- CONFIGURAR CAMPOS -->
-  <div class="config-wrap">
-    <div class="config-header" onclick="toggleConfig()">
-      <div class="config-title">⚙️ Configurar campos do Excel</div>
-      <div class="config-arrow" id="cfg-arrow">▼</div>
+  <!-- COLUNA ESQUERDA -->
+  <div class="left-col">
+    <header>
+      <h1>📄 Extrator NF-e / Substituição Tributária</h1>
+      <p>Configure os campos ao lado, carregue XMLs ou ZIP e baixe o Excel consolidado.</p>
+    </header>
+
+    <!-- FILTROS -->
+    <div class="filter-wrap" id="filter-wrap">
+      <div class="filter-header" onclick="toggleFiltros()">
+        <div class="filter-title">🔽 Filtros de exportação
+          <span class="filter-badge" id="filter-badge" style="display:none">ativos</span>
+        </div>
+        <div class="filter-arrow" id="filter-arrow">▼</div>
+      </div>
+      <div class="filter-body" id="filter-body">
+        <div class="filter-row">
+          <div class="filter-label">UF Emitente</div>
+          <div class="filter-controls">
+            <div class="filter-radios">
+              <label class="filter-radio"><input type="radio" name="uf-emit" value="todas" checked onchange="toggleUFPicker('emit',this.value)"> Todas</label>
+              <label class="filter-radio"><input type="radio" name="uf-emit" value="incluir" onchange="toggleUFPicker('emit',this.value)"> Incluir apenas</label>
+              <label class="filter-radio"><input type="radio" name="uf-emit" value="excluir" onchange="toggleUFPicker('emit',this.value)"> Excluir</label>
+            </div>
+            <div class="uf-picker" id="uf-emit-picker"></div>
+          </div>
+        </div>
+        <div class="filter-row">
+          <div class="filter-label">UF Destinatário</div>
+          <div class="filter-controls">
+            <div class="filter-radios">
+              <label class="filter-radio"><input type="radio" name="uf-dest" value="todas" checked onchange="toggleUFPicker('dest',this.value)"> Todas</label>
+              <label class="filter-radio"><input type="radio" name="uf-dest" value="incluir" onchange="toggleUFPicker('dest',this.value)"> Incluir apenas</label>
+              <label class="filter-radio"><input type="radio" name="uf-dest" value="excluir" onchange="toggleUFPicker('dest',this.value)"> Excluir</label>
+            </div>
+            <div class="uf-picker" id="uf-dest-picker"></div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="config-body" id="cfg-body">
+    <div class="filter-counter" id="filter-counter"></div>
 
-      <div class="config-tabs">
-        <div class="config-tab active" onclick="switchTab('notas',this)">Aba Notas</div>
-        <div class="config-tab" onclick="switchTab('itens',this)">Aba Itens</div>
+    <!-- DROP -->
+    <div class="drop-zone" id="drop" onclick="document.getElementById('file-input').click()">
+      <span class="drop-icon">📂</span>
+      <div class="drop-label" id="drop-label">Clique ou arraste os arquivos aqui</div>
+      <div class="drop-hint">Aceita .xml individuais ou .zip com XMLs dentro · Ctrl+A para selecionar tudo</div>
+    </div>
+    <input type="file" id="file-input" accept=".xml,.zip" multiple>
+
+    <div class="progress-wrap" id="prog-wrap">
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="pbar"></div></div>
+      <div class="progress-pct" id="ppct">0%</div>
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><div class="stat-n" id="s-notas">0</div><div class="stat-l">Notas</div></div>
+      <div class="stat"><div class="stat-n" id="s-itens">0</div><div class="stat-l">Itens</div></div>
+      <div class="stat"><div class="stat-n" id="s-erros">0</div><div class="stat-l">Erros</div></div>
+    </div>
+
+    <!-- ALERTAS -->
+    <div class="alerts-panel" id="alerts-panel"></div>
+
+    <div class="log-box" id="log"></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-excel" disabled onclick="exportar()">⬇ Baixar Excel</button>
+      <button class="btn btn-secondary" id="btn-limpar" style="display:none" onclick="limpar()">🔄 Limpar</button>
+    </div>
+
+    <div class="notice">
+      <strong>Privacidade:</strong> tudo processado no navegador, nenhum dado enviado a servidores.<br>
+      <strong>Dica:</strong> filtros e ordenação são opcionais — sem configuração, exporta tudo na ordem padrão.
+    </div>
+    <footer>Extrator NF-e / ST v5.0 · Uso interno</footer>
+  </div>
+
+  <!-- COLUNA DIREITA — PAINEL DE CAMPOS -->
+  <div class="right-col">
+    <div class="field-panel">
+      <div class="fp-title">⚙️ Campos do Excel</div>
+      <div class="fp-search">
+        <input type="text" id="fp-search-input" placeholder="Buscar campo..." oninput="buscarCampos(this.value)">
+        <button class="fp-search-clear" id="fp-clear-btn" onclick="limparBusca()">✕</button>
       </div>
-
-      <!-- PAINEL NOTAS -->
-      <div class="config-panel active" id="panel-notas">
-        <div class="field-group">
-          <div class="field-group-title">Identificação (fixos)</div>
-          <div class="field-grid" id="fg-nota-id"></div>
-        </div>
-        <div class="field-group">
-          <div class="field-group-title">Emitente</div>
-          <div class="field-grid" id="fg-nota-emit"></div>
-        </div>
-        <div class="field-group">
-          <div class="field-group-title">Destinatário</div>
-          <div class="field-grid" id="fg-nota-dest"></div>
-        </div>
-        <div class="field-group">
-          <div class="field-group-title">Valores e Impostos</div>
-          <div class="field-grid" id="fg-nota-val"></div>
-        </div>
-        <div class="field-group">
-          <div class="field-group-title">Informações adicionais</div>
-          <div class="field-grid" id="fg-nota-info"></div>
+      <div class="fp-tabs">
+        <button class="fp-tab active" onclick="fpTab('notas',this)">Notas</button>
+        <button class="fp-tab" onclick="fpTab('itens',this)">Itens</button>
+        <button class="fp-tab" onclick="fpTab('ordem',this)">Ordem</button>
+      </div>
+      <div class="fp-panels">
+        <div class="fp-panel active" id="fpp-notas"></div>
+        <div class="fp-panel" id="fpp-itens"></div>
+        <div class="fp-panel" id="fpp-ordem">
+          <div class="ordem-sub-tabs">
+            <button class="ordem-sub-tab active" onclick="ordemSubTab('notas',this)">Notas</button>
+            <button class="ordem-sub-tab" onclick="ordemSubTab('itens',this)">Itens</button>
+          </div>
+          <div class="ordem-hint">Arraste para reordenar as colunas no Excel</div>
+          <div id="ordem-notas-list" class="order-list"></div>
+          <div id="ordem-itens-list" class="order-list" style="display:none"></div>
         </div>
       </div>
-
-      <!-- PAINEL ITENS -->
-      <div class="config-panel" id="panel-itens">
-        <div class="field-group">
-          <div class="field-group-title">Identificação (fixos)</div>
-          <div class="field-grid" id="fg-item-id"></div>
-        </div>
-        <div class="field-group">
-          <div class="field-group-title">Referência da Nota</div>
-          <div class="field-grid" id="fg-item-nota"></div>
-        </div>
-        <div class="field-group">
-          <div class="field-group-title">Produto</div>
-          <div class="field-grid" id="fg-item-prod"></div>
-        </div>
-        <div class="field-group">
-          <div class="field-group-title">Impostos</div>
-          <div class="field-grid" id="fg-item-imp"></div>
-        </div>
-      </div>
-
     </div>
   </div>
 
-  <!-- DROP ZONE -->
-  <div class="drop-zone" id="drop" onclick="document.getElementById('file-input').click()">
-    <span class="drop-icon">📂</span>
-    <div class="drop-label" id="drop-label">Clique ou arraste os arquivos XML aqui</div>
-    <div class="drop-hint">Ctrl+A na pasta para selecionar todos · Arraste a pasta diretamente (Chrome/Edge)</div>
-  </div>
-  <input type="file" id="file-input" accept=".xml" multiple>
-
-  <div class="progress-wrap" id="prog-wrap">
-    <div class="progress-bar-bg"><div class="progress-bar-fill" id="pbar"></div></div>
-    <div class="progress-pct" id="ppct">0%</div>
-  </div>
-
-  <div class="stats" id="stats">
-    <div class="stat"><div class="stat-n" id="s-notas">0</div><div class="stat-l">Notas processadas</div></div>
-    <div class="stat"><div class="stat-n" id="s-itens">0</div><div class="stat-l">Itens extraídos</div></div>
-    <div class="stat"><div class="stat-n" id="s-erros">0</div><div class="stat-l">Erros</div></div>
-  </div>
-
-  <div class="log-box" id="log"></div>
-
-  <div class="actions">
-    <button class="btn btn-primary"   id="btn-excel"  disabled onclick="exportar()">⬇ Baixar Excel</button>
-    <button class="btn btn-secondary" id="btn-limpar" style="display:none" onclick="limpar()">🔄 Limpar e recomeçar</button>
-  </div>
-
-  <div class="notice">
-    <strong>Privacidade:</strong> Os XMLs são processados pelo seu navegador e nunca enviados para nenhum servidor.<br>
-    <strong>Dica:</strong> Altere os campos antes ou depois de processar — o Excel sempre reflete a seleção atual.
-  </div>
 </div>
-<footer>Extrator NF-e v2.0 · Uso interno</footer>
 </div>
 
 <script>
-/* ── LOGIN ── */
-const SENHA = 'st123';
+/* ══════════ LOGIN ══════════ */
+const SENHA='st123';
 function tentarLogin(){
   if(document.getElementById('pwd-input').value===SENHA){
     sessionStorage.setItem('nfe_auth','ok');
@@ -219,283 +299,631 @@ function tentarLogin(){
     document.getElementById('pwd-input').focus();
   }
 }
-(function(){ if(sessionStorage.getItem('nfe_auth')==='ok'){ document.getElementById('login-screen').style.display='none'; document.getElementById('app').style.display='block'; } })();
+(function(){ if(sessionStorage.getItem('nfe_auth')==='ok'){ document.getElementById('login-screen').style.display='none'; document.getElementById('app').style.display='block'; }})();
 
-/* ── DEFINIÇÃO DOS CAMPOS ── */
-// locked=true: sempre incluído, não pode desmarcar
-// on=true: marcado por padrão
-const CAMPOS_NOTA = [
-  // Identificação (fixos)
-  {id:'chave',    label:'Chave de Acesso', group:'nota-id',   locked:true, on:true},
-  {id:'numero',   label:'Número',          group:'nota-id',   locked:true, on:true},
-  {id:'serie',    label:'Série',           group:'nota-id',   locked:true, on:true},
-  {id:'data',     label:'Data Emissão',    group:'nota-id',   locked:true, on:true},
-  // Emitente
-  {id:'emitCNPJ', label:'CNPJ Emitente',  group:'nota-emit', locked:false, on:true},
-  {id:'emitNome', label:'Emitente',        group:'nota-emit', locked:false, on:true},
-  {id:'ufEmissao',label:'UF Emissão',      group:'nota-emit', locked:false, on:true},
-  {id:'emitIE',   label:'IE Emitente',     group:'nota-emit', locked:false, on:false},
-  // Destinatário
-  {id:'destDoc',  label:'CNPJ/CPF Dest.', group:'nota-dest', locked:false, on:true},
-  {id:'destNome', label:'Destinatário',    group:'nota-dest', locked:false, on:true},
-  {id:'destIE',   label:'IE Dest.',        group:'nota-dest', locked:false, on:false},
-  {id:'destMun',  label:'Município Dest.', group:'nota-dest', locked:false, on:false},
-  {id:'destUF',   label:'UF Dest.',        group:'nota-dest', locked:false, on:false},
-  {id:'destEmail',label:'Email Dest.',     group:'nota-dest', locked:false, on:false},
-  // Valores
-  {id:'vNF',      label:'Valor Total',     group:'nota-val',  locked:false, on:true},
-  {id:'vDesc',    label:'Desconto Total',  group:'nota-val',  locked:false, on:false},
-  {id:'vFrete',   label:'Frete',           group:'nota-val',  locked:false, on:false},
-  {id:'vSeg',     label:'Seguro',          group:'nota-val',  locked:false, on:false},
-  {id:'vOutro',   label:'Outras Despesas', group:'nota-val',  locked:false, on:false},
-  {id:'vBC',      label:'BC ICMS',         group:'nota-val',  locked:false, on:true},
-  {id:'vICMS',    label:'ICMS',            group:'nota-val',  locked:false, on:true},
-  {id:'vBCST',    label:'BC ICMS-ST',      group:'nota-val',  locked:false, on:true},
-  {id:'vST',      label:'ICMS-ST',         group:'nota-val',  locked:false, on:true},
-  {id:'vIPI',     label:'IPI',             group:'nota-val',  locked:false, on:true},
-  {id:'vPIS',     label:'PIS',             group:'nota-val',  locked:false, on:true},
-  {id:'vCOFINS',  label:'COFINS',          group:'nota-val',  locked:false, on:true},
-  {id:'vTotTrib', label:'Total Tributos',  group:'nota-val',  locked:false, on:false},
-  // Informações adicionais
-  {id:'natOp',    label:'Natureza da Operação', group:'nota-info', locked:false, on:false},
-  {id:'tpNF',     label:'Tipo (Entrada/Saída)', group:'nota-info', locked:false, on:false},
-  {id:'finNFe',   label:'Finalidade da NF-e',   group:'nota-info', locked:false, on:false},
-  {id:'transpMod',label:'Modalidade Frete',      group:'nota-info', locked:false, on:false},
-  {id:'transpNome',label:'Transportadora',       group:'nota-info', locked:false, on:false},
+/* ══════════ DEFINIÇÃO DE CAMPOS ══════════ */
+const CATS_NOTA=[
+  {id:'id',    label:'Identificação da Nota'},
+  {id:'emit',  label:'Emitente'},
+  {id:'dest',  label:'Destinatário'},
+  {id:'totais',label:'Valores e Totais'},
+  {id:'icms',  label:'ICMS'},
+  {id:'st',    label:'ICMS-ST / FCP'},
+  {id:'imp',   label:'IPI / PIS / COFINS'},
+  {id:'transp',label:'Transporte'},
+  {id:'cobr',  label:'Cobrança'},
+  {id:'ref',   label:'Notas Referenciadas'},
+  {id:'info',  label:'Informações Adicionais'},
+];
+const CATS_ITEM=[
+  {id:'id',    label:'Identificação'},
+  {id:'ref',   label:'Referência da Nota'},
+  {id:'prod',  label:'Produto / Serviço'},
+  {id:'rastro',label:'Rastreabilidade (Lote)'},
+  {id:'icms',  label:'ICMS'},
+  {id:'st',    label:'ICMS-ST'},
+  {id:'fcp',   label:'FCP / FCPST / FCPSTRet'},
+  {id:'ipi',   label:'IPI'},
+  {id:'pis',   label:'PIS'},
+  {id:'cof',   label:'COFINS'},
 ];
 
-const CAMPOS_ITEM = [
-  // Identificação (fixos)
-  {id:'chave',   label:'Chave de Acesso',   group:'item-id',   locked:true, on:true},
-  {id:'numero',  label:'Nº Nota',           group:'item-id',   locked:true, on:true},
-  {id:'nitem',   label:'Item',              group:'item-id',   locked:true, on:true},
-  // Referência da nota
-  {id:'emitCNPJ',label:'CNPJ Emitente',     group:'item-nota', locked:false, on:true},
-  {id:'emitNome',label:'Emitente',          group:'item-nota', locked:false, on:true},
-  {id:'ufEmissao',label:'UF Emissão',       group:'item-nota', locked:false, on:true},
-  {id:'destDoc', label:'CNPJ/CPF Dest.',    group:'item-nota', locked:false, on:true},
-  {id:'destNome',label:'Destinatário',      group:'item-nota', locked:false, on:true},
-  // Produto
-  {id:'cProd',   label:'Cód. Produto',      group:'item-prod', locked:true, on:true},
-  {id:'xProd',   label:'Descrição',         group:'item-prod', locked:true, on:true},
-  {id:'NCM',     label:'NCM',               group:'item-prod', locked:false, on:true},
-  {id:'CEST',    label:'CEST',              group:'item-prod', locked:false, on:true},
-  {id:'CFOP',    label:'CFOP',              group:'item-prod', locked:false, on:true},
-  {id:'uCom',    label:'Unidade',           group:'item-prod', locked:false, on:true},
-  {id:'qCom',    label:'Quantidade',        group:'item-prod', locked:true, on:true},
-  {id:'vUnCom',  label:'Vlr. Unitário',     group:'item-prod', locked:false, on:true},
-  {id:'vProd',   label:'Vlr. Produto',      group:'item-prod', locked:true, on:true},
-  {id:'vDesc',   label:'Desconto Item',     group:'item-prod', locked:false, on:false},
-  // Impostos
-  {id:'CST',     label:'CST/CSOSN',         group:'item-imp',  locked:false, on:false},
-  {id:'pICMS',   label:'Alíq. ICMS (%)',    group:'item-imp',  locked:false, on:false},
-  {id:'bcICMS',  label:'BC ICMS',           group:'item-imp',  locked:false, on:true},
-  {id:'icms',    label:'ICMS',              group:'item-imp',  locked:false, on:true},
-  {id:'pICMSST', label:'Alíq. ICMS-ST (%)',group:'item-imp',  locked:false, on:false},
-  {id:'bcST',    label:'BC ICMS-ST',        group:'item-imp',  locked:false, on:true},
-  {id:'icmsST',  label:'ICMS-ST',           group:'item-imp',  locked:false, on:true},
-  {id:'ipi',     label:'IPI',               group:'item-imp',  locked:false, on:true},
-  {id:'pis',     label:'PIS',               group:'item-imp',  locked:false, on:true},
-  {id:'cofins',  label:'COFINS',            group:'item-imp',  locked:false, on:true},
+const CAMPOS_NOTA=[
+  {id:'chave',      label:'Chave de Acesso',          cat:'id',    locked:true,  on:true},
+  {id:'numero',     label:'Número',                   cat:'id',    locked:true,  on:true},
+  {id:'serie',      label:'Série',                    cat:'id',    locked:true,  on:true},
+  {id:'data',       label:'Data Emissão',             cat:'id',    locked:true,  on:true},
+  {id:'natOp',      label:'Natureza da Operação',     cat:'id',    locked:false, on:false},
+  {id:'tpNF',       label:'Tipo (Entrada/Saída)',     cat:'id',    locked:false, on:false},
+  {id:'finNFe',     label:'Finalidade',               cat:'id',    locked:false, on:false},
+  {id:'emitCNPJ',   label:'CNPJ',                     cat:'emit',  locked:false, on:true},
+  {id:'emitNome',   label:'Razão Social',             cat:'emit',  locked:false, on:true},
+  {id:'ufEmissao',  label:'UF',                       cat:'emit',  locked:false, on:true},
+  {id:'emitIE',     label:'Inscrição Estadual',       cat:'emit',  locked:false, on:false},
+  {id:'emitIM',     label:'Inscrição Municipal',      cat:'emit',  locked:false, on:false},
+  {id:'emitCNAE',   label:'CNAE',                     cat:'emit',  locked:false, on:false},
+  {id:'emitCRT',    label:'CRT',                      cat:'emit',  locked:false, on:false},
+  {id:'emitMun',    label:'Município',                cat:'emit',  locked:false, on:false},
+  {id:'emitCEP',    label:'CEP',                      cat:'emit',  locked:false, on:false},
+  {id:'emitFone',   label:'Telefone',                 cat:'emit',  locked:false, on:false},
+  {id:'destDoc',    label:'CNPJ/CPF',                 cat:'dest',  locked:false, on:true},
+  {id:'destNome',   label:'Razão Social',             cat:'dest',  locked:false, on:true},
+  {id:'destUF',     label:'UF',                       cat:'dest',  locked:false, on:false},
+  {id:'destIE',     label:'Inscrição Estadual',       cat:'dest',  locked:false, on:false},
+  {id:'destIndIE',  label:'Indicador IE',             cat:'dest',  locked:false, on:false},
+  {id:'destMun',    label:'Município',                cat:'dest',  locked:false, on:false},
+  {id:'destCEP',    label:'CEP',                      cat:'dest',  locked:false, on:false},
+  {id:'destFone',   label:'Telefone',                 cat:'dest',  locked:false, on:false},
+  {id:'destEmail',  label:'Email',                    cat:'dest',  locked:false, on:false},
+  {id:'vNF',        label:'Valor Total',              cat:'totais',locked:false, on:true},
+  {id:'vDesc',      label:'Desconto',                 cat:'totais',locked:false, on:false},
+  {id:'vFrete',     label:'Frete',                    cat:'totais',locked:false, on:false},
+  {id:'vSeg',       label:'Seguro',                   cat:'totais',locked:false, on:false},
+  {id:'vOutro',     label:'Outras Despesas',          cat:'totais',locked:false, on:false},
+  {id:'vTotTrib',   label:'Total Tributos',           cat:'totais',locked:false, on:false},
+  {id:'vBC',        label:'BC ICMS',                  cat:'icms',  locked:false, on:true},
+  {id:'vICMS',      label:'ICMS',                     cat:'icms',  locked:false, on:true},
+  {id:'vBCST',      label:'BC ICMS-ST',               cat:'st',    locked:false, on:true},
+  {id:'vST',        label:'ICMS-ST',                  cat:'st',    locked:false, on:true},
+  {id:'vFCP',       label:'FCP',                      cat:'st',    locked:false, on:false},
+  {id:'vFCPST',     label:'FCPST',                    cat:'st',    locked:false, on:false},
+  {id:'vFCPSTRet',  label:'FCPSTRet',                 cat:'st',    locked:false, on:false},
+  {id:'vIPI',       label:'IPI',                      cat:'imp',   locked:false, on:true},
+  {id:'vPIS',       label:'PIS',                      cat:'imp',   locked:false, on:true},
+  {id:'vCOFINS',    label:'COFINS',                   cat:'imp',   locked:false, on:true},
+  {id:'transpMod',  label:'Modalidade Frete',         cat:'transp',locked:false, on:false},
+  {id:'transpNome', label:'Transportadora',           cat:'transp',locked:false, on:false},
+  {id:'transpCNPJ', label:'CNPJ Transportadora',      cat:'transp',locked:false, on:false},
+  {id:'transpPlaca',label:'Placa Veículo',            cat:'transp',locked:false, on:false},
+  {id:'transpUFVeic',label:'UF Veículo Transp.',      cat:'transp',locked:false, on:false},
+  {id:'transpRNTRC',label:'RNTRC',                    cat:'transp',locked:false, on:false},
+  {id:'transpQVol', label:'Qtde Volumes',             cat:'transp',locked:false, on:false},
+  {id:'transpEsp',  label:'Espécie Volume',           cat:'transp',locked:false, on:false},
+  {id:'transpPesoB',label:'Peso Bruto (kg)',          cat:'transp',locked:false, on:false},
+  {id:'transpPesoL',label:'Peso Líquido (kg)',        cat:'transp',locked:false, on:false},
+  {id:'fatNro',     label:'Nº Fatura',                cat:'cobr',  locked:false, on:false},
+  {id:'fatVOrig',   label:'Valor Original',           cat:'cobr',  locked:false, on:false},
+  {id:'fatVDesc',   label:'Desconto Fatura',          cat:'cobr',  locked:false, on:false},
+  {id:'fatVLiq',    label:'Valor Líquido',            cat:'cobr',  locked:false, on:false},
+  {id:'duplicatas', label:'Duplicatas (nº·venc·vlr)', cat:'cobr',  locked:false, on:false},
+  {id:'chNFeRef',   label:'Chave NF-e Referenciada',  cat:'ref',   locked:false, on:false},
+  {id:'infCpl',     label:'Inf. Complementares',      cat:'info',  locked:false, on:false},
+  {id:'infAdFisco', label:'Inf. Interesse do Fisco',  cat:'info',  locked:false, on:false},
 ];
 
-// estado dos checkboxes
-const estadoNota = {};
-const estadoItem = {};
-CAMPOS_NOTA.forEach(f => estadoNota[f.id] = f.on);
-CAMPOS_ITEM.forEach(f => estadoItem[f.id] = f.on);
+const CAMPOS_ITEM=[
+  {id:'chave',      label:'Chave de Acesso',          cat:'id',    locked:true,  on:true},
+  {id:'numero',     label:'Nº Nota',                  cat:'id',    locked:true,  on:true},
+  {id:'nitem',      label:'Item',                     cat:'id',    locked:true,  on:true},
+  {id:'emitCNPJ',   label:'CNPJ Emitente',            cat:'ref',   locked:false, on:true},
+  {id:'emitNome',   label:'Emitente',                 cat:'ref',   locked:false, on:true},
+  {id:'ufEmissao',  label:'UF Emissão',               cat:'ref',   locked:false, on:true},
+  {id:'destDoc',    label:'CNPJ/CPF Dest.',           cat:'ref',   locked:false, on:true},
+  {id:'destNome',   label:'Destinatário',             cat:'ref',   locked:false, on:true},
+  {id:'cProd',      label:'Cód. Produto',             cat:'prod',  locked:true,  on:true},
+  {id:'xProd',      label:'Descrição',                cat:'prod',  locked:true,  on:true},
+  {id:'NCM',        label:'NCM',                      cat:'prod',  locked:false, on:true},
+  {id:'CEST',       label:'CEST',                     cat:'prod',  locked:false, on:true},
+  {id:'CFOP',       label:'CFOP',                     cat:'prod',  locked:false, on:true},
+  {id:'uCom',       label:'Unidade',                  cat:'prod',  locked:false, on:true},
+  {id:'qCom',       label:'Quantidade',               cat:'prod',  locked:true,  on:true},
+  {id:'vUnCom',     label:'Vlr. Unitário',            cat:'prod',  locked:false, on:true},
+  {id:'vProd',      label:'Vlr. Produto',             cat:'prod',  locked:true,  on:true},
+  {id:'vDescItem',  label:'Desconto Item',            cat:'prod',  locked:false, on:false},
+  {id:'infAdProd',  label:'Inf. Adicional Item',      cat:'prod',  locked:false, on:false},
+  {id:'cEAN',       label:'Cód. Barras (GTIN)',       cat:'prod',  locked:false, on:false},
+  {id:'xPed',       label:'Nº Pedido Compra',         cat:'prod',  locked:false, on:false},
+  {id:'nItemPed',   label:'Item do Pedido',           cat:'prod',  locked:false, on:false},
+  {id:'nLote',      label:'Lote',                     cat:'rastro',locked:false, on:false},
+  {id:'qLote',      label:'Qtde no Lote',             cat:'rastro',locked:false, on:false},
+  {id:'dFab',       label:'Data Fabricação',          cat:'rastro',locked:false, on:false},
+  {id:'dVal',       label:'Data Validade',            cat:'rastro',locked:false, on:false},
+  {id:'cAgreg',     label:'Cód. Agregação',           cat:'rastro',locked:false, on:false},
+  {id:'CST',        label:'CST / CSOSN',              cat:'icms',  locked:false, on:false},
+  {id:'modBC',      label:'Modalidade BC',            cat:'icms',  locked:false, on:false},
+  {id:'pICMS',      label:'Alíquota ICMS (%)',        cat:'icms',  locked:false, on:false},
+  {id:'bcICMS',     label:'BC ICMS',                  cat:'icms',  locked:false, on:true},
+  {id:'icms',       label:'ICMS',                     cat:'icms',  locked:false, on:true},
+  {id:'pMVAST',     label:'MVA (%)',                  cat:'st',    locked:false, on:false},
+  {id:'pICMSST',    label:'Alíquota ICMS-ST (%)',     cat:'st',    locked:false, on:false},
+  {id:'bcST',       label:'BC ICMS-ST',               cat:'st',    locked:false, on:true},
+  {id:'icmsST',     label:'ICMS-ST',                  cat:'st',    locked:false, on:true},
+  {id:'vBCSTRet',   label:'BC ST Retido',             cat:'st',    locked:false, on:false},
+  {id:'vICMSSTRet', label:'ICMS-ST Retido',           cat:'st',    locked:false, on:false},
+  {id:'vBCFCP',     label:'BC FCP',                   cat:'fcp',   locked:false, on:false},
+  {id:'pFCP',       label:'Alíq. FCP (%)',            cat:'fcp',   locked:false, on:false},
+  {id:'vFCP',       label:'FCP',                      cat:'fcp',   locked:false, on:false},
+  {id:'vBCFCPST',   label:'BC FCPST',                 cat:'fcp',   locked:false, on:false},
+  {id:'pFCPST',     label:'Alíq. FCPST (%)',          cat:'fcp',   locked:false, on:false},
+  {id:'vFCPST',     label:'FCPST',                    cat:'fcp',   locked:false, on:false},
+  {id:'vBCFCPSTRet',label:'BC FCPSTRet',              cat:'fcp',   locked:false, on:false},
+  {id:'pFCPSTRet',  label:'Alíq. FCPSTRet (%)',       cat:'fcp',   locked:false, on:false},
+  {id:'vFCPSTRet',  label:'FCPSTRet',                 cat:'fcp',   locked:false, on:false},
+  {id:'cstIPI',     label:'CST IPI',                  cat:'ipi',   locked:false, on:false},
+  {id:'clEnq',      label:'Classe Enquadramento',     cat:'ipi',   locked:false, on:false},
+  {id:'CNPJProd',   label:'CNPJ Produtor',            cat:'ipi',   locked:false, on:false},
+  {id:'cSelo',      label:'Cód. Selo',                cat:'ipi',   locked:false, on:false},
+  {id:'qSelo',      label:'Qtde Selos',               cat:'ipi',   locked:false, on:false},
+  {id:'bcIPI',      label:'BC IPI',                   cat:'ipi',   locked:false, on:false},
+  {id:'pIPI',       label:'Alíquota IPI (%)',         cat:'ipi',   locked:false, on:false},
+  {id:'ipi',        label:'IPI',                      cat:'ipi',   locked:false, on:true},
+  {id:'cstPIS',     label:'CST PIS',                  cat:'pis',   locked:false, on:false},
+  {id:'bcPIS',      label:'BC PIS',                   cat:'pis',   locked:false, on:false},
+  {id:'pPIS',       label:'Alíquota PIS (%)',         cat:'pis',   locked:false, on:false},
+  {id:'pis',        label:'PIS',                      cat:'pis',   locked:false, on:true},
+  {id:'cstCOFINS',  label:'CST COFINS',               cat:'cof',   locked:false, on:false},
+  {id:'bcCOFINS',   label:'BC COFINS',                cat:'cof',   locked:false, on:false},
+  {id:'pCOFINS',    label:'Alíquota COFINS (%)',      cat:'cof',   locked:false, on:false},
+  {id:'cofins',     label:'COFINS',                   cat:'cof',   locked:false, on:true},
+];
 
-function renderCampos(campos, estado, grupoPrefixo){
-  const grupos = {};
-  campos.forEach(f => { if(!grupos[f.group]) grupos[f.group]=[]; grupos[f.group].push(f); });
-  Object.entries(grupos).forEach(([grp, fields]) => {
-    const container = document.getElementById('fg-'+grp);
-    if(!container) return;
-    container.innerHTML = '';
-    fields.forEach(f => {
-      const item = document.createElement('div');
-      item.className = 'field-item'+(estado[f.id]?' checked':'')+(f.locked?' locked':'');
-      item.innerHTML = `<input type="checkbox" id="chk-${grupoPrefixo}-${f.id}" ${estado[f.id]?'checked':''} ${f.locked?'disabled':''}>
-        <label for="chk-${grupoPrefixo}-${f.id}">${f.label}</label>`;
-      if(!f.locked){
-        item.addEventListener('click', ()=>{
-          estado[f.id] = !estado[f.id];
-          item.classList.toggle('checked', estado[f.id]);
-          item.querySelector('input').checked = estado[f.id];
-        });
+/* ══════════ ESTADO ══════════ */
+const estadoNota={}, estadoItem={};
+CAMPOS_NOTA.forEach(f=>estadoNota[f.id]=f.on);
+CAMPOS_ITEM.forEach(f=>estadoItem[f.id]=f.on);
+let ordemNota=CAMPOS_NOTA.filter(f=>f.on).map(f=>f.id);
+let ordemItem=CAMPOS_ITEM.filter(f=>f.on).map(f=>f.id);
+
+/* ══════════ RENDER ACORDEÃO ══════════ */
+function renderAcordeao(panelId, cats, campos, estado, pfx){
+  const panel=document.getElementById(panelId);
+  panel.innerHTML='';
+  cats.forEach(cat=>{
+    const fields=campos.filter(f=>f.cat===cat.id);
+    if(!fields.length) return;
+    const blk=document.createElement('div');
+    blk.className='cat-block';
+    blk.dataset.cat=cat.id;
+    blk.dataset.pfx=pfx;
+    const extras=fields.filter(f=>!f.locked&&estado[f.id]).length;
+    const total=fields.filter(f=>!f.locked).length;
+    blk.innerHTML=`
+      <div class="cat-hdr" onclick="toggleCat(this)">
+        <span class="cat-name">${cat.label}</span>
+        <span class="cat-cnt${extras?' show':''}" id="cc-${pfx}-${cat.id}">${extras}</span>
+        <span class="cat-all" onclick="event.stopPropagation();toggleAll('${pfx}','${cat.id}')">todos</span>
+        <span class="cat-arrow">▼</span>
+      </div>
+      <div class="cat-body">
+        <div id="fg-${pfx}-${cat.id}"></div>
+      </div>`;
+    panel.appendChild(blk);
+    const grid=blk.querySelector(`#fg-${pfx}-${cat.id}`);
+    fields.forEach(f=>grid.appendChild(criarFldItem(f,estado,pfx)));
+  });
+}
+
+function criarFldItem(f,estado,pfx){
+  const item=document.createElement('div');
+  item.className='fld-item'+(estado[f.id]?' checked':'')+(f.locked?' locked':'');
+  item.id=`fi-${pfx}-${f.id}`;
+  item.dataset.label=f.label.toLowerCase();
+  item.innerHTML=`<input type="checkbox" id="chk-${pfx}-${f.id}" ${estado[f.id]?'checked':''} ${f.locked?'disabled':''}><label for="chk-${pfx}-${f.id}">${f.label}</label>`;
+  if(!f.locked) item.addEventListener('click',()=>toggleField(pfx,f.id));
+  return item;
+}
+
+function toggleField(pfx,id){
+  const estado=pfx==='n'?estadoNota:estadoItem;
+  const campos=pfx==='n'?CAMPOS_NOTA:CAMPOS_ITEM;
+  const ordemArr=pfx==='n'?ordemNota:ordemItem;
+  estado[id]=!estado[id];
+  const item=document.getElementById(`fi-${pfx}-${id}`);
+  if(item){ item.classList.toggle('checked',estado[id]); item.querySelector('input').checked=estado[id]; }
+  if(estado[id]){ if(!ordemArr.includes(id)) ordemArr.push(id); }
+  else { const idx=ordemArr.indexOf(id); if(idx>=0) ordemArr.splice(idx,1); }
+  // Atualiza badge da categoria
+  const f=campos.find(c=>c.id===id);
+  if(f) atualizarBadgeCat(pfx,f.cat,campos,estado);
+  renderOrdemLista();
+}
+
+function toggleCat(hdr){
+  const body=hdr.nextElementSibling;
+  body.classList.toggle('open');
+  hdr.querySelector('.cat-arrow').classList.toggle('open');
+}
+
+function toggleAll(pfx,catId){
+  const campos=pfx==='n'?CAMPOS_NOTA:CAMPOS_ITEM;
+  const estado=pfx==='n'?estadoNota:estadoItem;
+  const ordemArr=pfx==='n'?ordemNota:ordemItem;
+  const fields=campos.filter(f=>f.cat===catId&&!f.locked);
+  const allOn=fields.every(f=>estado[f.id]);
+  fields.forEach(f=>{
+    estado[f.id]=!allOn;
+    const item=document.getElementById(`fi-${pfx}-${f.id}`);
+    if(item){ item.classList.toggle('checked',estado[f.id]); item.querySelector('input').checked=estado[f.id]; }
+    if(estado[f.id]){ if(!ordemArr.includes(f.id)) ordemArr.push(f.id); }
+    else { const idx=ordemArr.indexOf(f.id); if(idx>=0) ordemArr.splice(idx,1); }
+  });
+  atualizarBadgeCat(pfx,catId,campos,estado);
+  renderOrdemLista();
+}
+
+function atualizarBadgeCat(pfx,catId,campos,estado){
+  const extras=campos.filter(f=>f.cat===catId&&!f.locked&&estado[f.id]).length;
+  const el=document.getElementById(`cc-${pfx}-${catId}`);
+  if(!el) return;
+  el.textContent=extras;
+  el.classList.toggle('show',extras>0);
+}
+
+/* ══════════ BUSCA ══════════ */
+function buscarCampos(q){
+  const query=q.toLowerCase().trim();
+  document.getElementById('fp-clear-btn').style.display=query?'block':'none';
+  ['n','i'].forEach(pfx=>{
+    const panelId=pfx==='n'?'fpp-notas':'fpp-itens';
+    const campos=pfx==='n'?CAMPOS_NOTA:CAMPOS_ITEM;
+    const cats=pfx==='n'?CATS_NOTA:CATS_ITEM;
+    cats.forEach(cat=>{
+      const fields=campos.filter(f=>f.cat===cat.id);
+      let catHasMatch=false;
+      fields.forEach(f=>{
+        const item=document.getElementById(`fi-${pfx}-${f.id}`);
+        if(!item) return;
+        const match=!query||f.label.toLowerCase().includes(query);
+        item.classList.toggle('hidden',!match);
+        if(match){
+          catHasMatch=true;
+          const lbl=item.querySelector('label');
+          lbl.innerHTML=query?f.label.replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'),'<mark>$1</mark>'):f.label;
+        }
+      });
+      const blk=document.querySelector(`#${panelId} .cat-block[data-cat="${cat.id}"]`);
+      if(blk){
+        blk.classList.toggle('hidden',!catHasMatch);
+        if(query&&catHasMatch){ blk.querySelector('.cat-body').classList.add('open'); blk.querySelector('.cat-arrow').classList.add('open'); }
       }
-      container.appendChild(item);
     });
   });
 }
 
-function toggleConfig(){
-  const body = document.getElementById('cfg-body');
-  const arrow = document.getElementById('cfg-arrow');
-  body.classList.toggle('open');
-  arrow.classList.toggle('open');
+function limparBusca(){
+  document.getElementById('fp-search-input').value='';
+  document.getElementById('fp-clear-btn').style.display='none';
+  buscarCampos('');
 }
 
-function switchTab(tab, el){
-  document.querySelectorAll('.config-tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.config-panel').forEach(p=>p.classList.remove('active'));
+/* ══════════ ABA ORDEM ══════════ */
+let ordemSubAtual='notas';
+function ordemSubTab(sub,el){
+  ordemSubAtual=sub;
+  document.querySelectorAll('.ordem-sub-tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('panel-'+tab).classList.add('active');
+  document.getElementById('ordem-notas-list').style.display=sub==='notas'?'flex':'none';
+  document.getElementById('ordem-itens-list').style.display=sub==='itens'?'flex':'none';
 }
 
-renderCampos(CAMPOS_NOTA, estadoNota, 'n');
-renderCampos(CAMPOS_ITEM, estadoItem, 'i');
+function renderOrdemLista(){
+  renderOrdemPfx('n',ordemNota,CAMPOS_NOTA,'ordem-notas-list');
+  renderOrdemPfx('i',ordemItem,CAMPOS_ITEM,'ordem-itens-list');
+}
 
-/* ── EXTRAÇÃO ── */
-const NS = 'http://www.portalfiscal.inf.br/nfe';
-let todasNotas = [], todosItens = [];
+function renderOrdemPfx(pfx,ordem,campos,listId){
+  const list=document.getElementById(listId);
+  list.innerHTML='';
+  if(!ordem.length){ list.innerHTML='<div class="order-empty">Nenhum campo ativo</div>'; return; }
+  ordem.forEach((id,idx)=>{
+    const f=campos.find(c=>c.id===id);
+    if(!f) return;
+    const item=document.createElement('div');
+    item.className='order-item';
+    item.draggable=true;
+    item.dataset.idx=idx;
+    item.dataset.pfx=pfx;
+    item.innerHTML=`<span class="drag-handle">⠿</span><span class="order-label">${f.label}</span>`;
+    item.addEventListener('dragstart',e=>{ item.classList.add('dragging'); e.dataTransfer.setData('idx',idx); e.dataTransfer.setData('pfx',pfx); });
+    item.addEventListener('dragend',()=>item.classList.remove('dragging'));
+    item.addEventListener('dragover',e=>{ e.preventDefault(); document.querySelectorAll('.order-item').forEach(i=>i.classList.remove('drag-over')); item.classList.add('drag-over'); });
+    item.addEventListener('dragleave',()=>item.classList.remove('drag-over'));
+    item.addEventListener('drop',e=>{
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      const fromIdx=parseInt(e.dataTransfer.getData('idx'));
+      const arr=pfx==='n'?ordemNota:ordemItem;
+      const [moved]=arr.splice(fromIdx,1);
+      arr.splice(idx,0,moved);
+      renderOrdemLista();
+    });
+    list.appendChild(item);
+  });
+}
 
-function getNS(el,tag){ return el.getElementsByTagNameNS(NS,tag); }
-function txt(el,tag){ if(!el)return''; const f=el.getElementsByTagNameNS(NS,tag); return f.length?(f[0].textContent||'').trim():''; }
-function num(el,tag){ return parseFloat(txt(el,tag))||0; }
+function fpTab(tab,el){
+  document.querySelectorAll('.fp-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.fp-panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('fpp-'+tab).classList.add('active');
+  if(tab==='ordem') renderOrdemLista();
+}
 
-const tpNFmap  = {'0':'Entrada','1':'Saída'};
-const finNFeMap = {'1':'Normal','2':'Complementar','3':'Ajuste','4':'Devolução'};
-const modFreteMap = {'0':'Emit./Rem.','1':'Dest./Rec.','2':'Terceiros','3':'Próprio Rem.','4':'Próprio Dest.','9':'Sem frete'};
+renderAcordeao('fpp-notas',CATS_NOTA,CAMPOS_NOTA,estadoNota,'n');
+renderAcordeao('fpp-itens',CATS_ITEM,CAMPOS_ITEM,estadoItem,'i');
+
+/* ══════════ FILTROS UF ══════════ */
+const UFS=['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+const filtroUF={emit:{modo:'todas',sel:new Set()},dest:{modo:'todas',sel:new Set()}};
+
+function initUFPickers(){
+  ['emit','dest'].forEach(tipo=>{
+    const p=document.getElementById(`uf-${tipo}-picker`);
+    UFS.forEach(uf=>{
+      const btn=document.createElement('button');
+      btn.className='uf-btn'; btn.textContent=uf;
+      btn.onclick=()=>{ btn.classList.toggle('sel'); filtroUF[tipo].sel[btn.classList.contains('sel')?'add':'delete'](uf); atualizarFiltroUI(); };
+      p.appendChild(btn);
+    });
+  });
+}
+
+function toggleUFPicker(tipo,val){
+  filtroUF[tipo].modo=val; filtroUF[tipo].sel.clear();
+  document.querySelectorAll(`#uf-${tipo}-picker .uf-btn`).forEach(b=>b.classList.remove('sel'));
+  document.getElementById(`uf-${tipo}-picker`).classList.toggle('show',val!=='todas');
+  atualizarFiltroUI();
+}
+
+function atualizarFiltroUI(){
+  const ativo=(filtroUF.emit.modo!=='todas'&&filtroUF.emit.sel.size>0)||(filtroUF.dest.modo!=='todas'&&filtroUF.dest.sel.size>0);
+  document.getElementById('filter-badge').style.display=ativo?'':'none';
+  document.getElementById('filter-wrap').classList.toggle('ativo',ativo);
+  atualizarContadorFiltro();
+}
+
+function toggleFiltros(){
+  document.getElementById('filter-body').classList.toggle('open');
+  document.getElementById('filter-arrow').classList.toggle('open');
+}
+
+function notaPassaFiltro(nota){
+  const fe=filtroUF.emit, fd=filtroUF.dest;
+  const ufE=nota.ufEmissao||'', ufD=nota.destUF||'';
+  if(fe.modo==='incluir'&&fe.sel.size>0&&!fe.sel.has(ufE)) return false;
+  if(fe.modo==='excluir'&&fe.sel.size>0&&fe.sel.has(ufE)) return false;
+  if(fd.modo==='incluir'&&fd.sel.size>0&&!fd.sel.has(ufD)) return false;
+  if(fd.modo==='excluir'&&fd.sel.size>0&&fd.sel.has(ufD)) return false;
+  return true;
+}
+
+function atualizarContadorFiltro(){
+  const counter=document.getElementById('filter-counter');
+  const ativo=(filtroUF.emit.modo!=='todas'&&filtroUF.emit.sel.size>0)||(filtroUF.dest.modo!=='todas'&&filtroUF.dest.sel.size>0);
+  if(!ativo||!todasNotas.length){ counter.style.display='none'; return; }
+  const n=todasNotas.filter(nota=>notaPassaFiltro(nota)).length;
+  counter.style.display='block';
+  counter.textContent=`Filtros ativos: ${n} de ${todasNotas.length} nota(s) serão exportadas`;
+}
+
+initUFPickers();
+
+/* ══════════ PARSING ══════════ */
+const NS='http://www.portalfiscal.inf.br/nfe';
+let todasNotas=[],todosItens=[];
+function getNS(el,tag){return el.getElementsByTagNameNS(NS,tag);}
+function txt(el,tag){if(!el)return'';const f=el.getElementsByTagNameNS(NS,tag);return f.length?(f[0].textContent||'').trim():'';}
+function num(el,tag){return parseFloat(txt(el,tag))||0;}
+
+const tpNFmap={'0':'Entrada','1':'Saída'};
+const finMap={'1':'Normal','2':'Complementar','3':'Ajuste','4':'Devolução'};
+const modFreteMap={'0':'Emit./Rem.','1':'Dest./Rec.','2':'Terceiros','3':'Próprio Rem.','4':'Próprio Dest.','9':'Sem frete'};
+const indIEMap={'1':'Contribuinte','2':'Isento','9':'Não contribuinte'};
+const modBCMap={'0':'Margem Valor Agregado','1':'Pauta','2':'Preço Tabelado','3':'Valor da Operação'};
+const crtMap={'1':'Simples Nacional','2':'Simples Nacional - excesso','3':'Regime Normal'};
 
 function extrairICMSItem(imp){
-  let icms=0,icmsST=0,bcICMS=0,bcST=0,CST='',pICMS=0,pICMSST=0;
-  if(!imp) return {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST};
-  const grupo = imp.getElementsByTagNameNS(NS,'ICMS')[0];
-  if(!grupo) return {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST};
-  for(const cst of grupo.children){
-    const get = (t) => { const el=cst.getElementsByTagNameNS(NS,t)[0]; return el?(el.textContent||'').trim():''; };
-    if(!CST){ CST = get('CST')||get('CSOSN'); }
-    const vi=get('vICMS'), vst=get('vICMSST'), vbc=get('vBC'), vbcs=get('vBCST');
-    const pi=get('pICMS'), pst=get('pICMSST');
-    if(vi)   icms   = parseFloat(vi)||0;
-    if(vst)  icmsST = parseFloat(vst)||0;
-    if(vbc)  bcICMS = parseFloat(vbc)||0;
-    if(vbcs) bcST   = parseFloat(vbcs)||0;
-    if(pi)   pICMS  = parseFloat(pi)||0;
-    if(pst)  pICMSST= parseFloat(pst)||0;
+  const r={CST:'',modBC:'',pICMS:0,bcICMS:0,icms:0,pMVAST:0,pICMSST:0,bcST:0,icmsST:0,vBCSTRet:0,vICMSSTRet:0,
+    vBCFCP:0,pFCP:0,vFCP:0,vBCFCPST:0,pFCPST:0,vFCPST:0,vBCFCPSTRet:0,pFCPSTRet:0,vFCPSTRet:0};
+  if(!imp) return r;
+  const grp=imp.getElementsByTagNameNS(NS,'ICMS')[0];
+  if(!grp) return r;
+  for(const c of grp.children){
+    const g=(t)=>{const e=c.getElementsByTagNameNS(NS,t)[0];return e?(e.textContent||'').trim():'';};
+    const n=(t)=>parseFloat(g(t))||0;
+    if(!r.CST) r.CST=g('CST')||g('CSOSN');
+    r.modBC   =modBCMap[g('modBC')]||g('modBC')||r.modBC;
+    r.pICMS   =n('pICMS')||r.pICMS;   r.bcICMS =n('vBC')||r.bcICMS;   r.icms  =n('vICMS')||r.icms;
+    r.pMVAST  =n('pMVAST')||r.pMVAST; r.pICMSST=n('pICMSST')||r.pICMSST;
+    r.bcST    =n('vBCST')||r.bcST;    r.icmsST =n('vICMSST')||r.icmsST;
+    r.vBCSTRet=n('vBCSTRet')||r.vBCSTRet; r.vICMSSTRet=n('vICMSSTRet')||r.vICMSSTRet;
+    r.vBCFCP=n('vBCFCP')||r.vBCFCP; r.pFCP=n('pFCP')||r.pFCP; r.vFCP=n('vFCP')||r.vFCP;
+    r.vBCFCPST=n('vBCFCPST')||r.vBCFCPST; r.pFCPST=n('pFCPST')||r.pFCPST; r.vFCPST=n('vFCPST')||r.vFCPST;
+    r.vBCFCPSTRet=n('vBCFCPSTRet')||r.vBCFCPSTRet; r.pFCPSTRet=n('pFCPSTRet')||r.pFCPSTRet; r.vFCPSTRet=n('vFCPSTRet')||r.vFCPSTRet;
   }
-  return {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST};
+  return r;
 }
 
-function extrairImposto(imp,grupo,campo){
-  if(!imp) return 0;
+function extrairIPI(imp){
+  if(!imp) return{cstIPI:'',clEnq:'',CNPJProd:'',cSelo:'',qSelo:0,bcIPI:0,pIPI:0,ipi:0};
+  const g=imp.getElementsByTagNameNS(NS,'IPI')[0];
+  if(!g) return{cstIPI:'',clEnq:'',CNPJProd:'',cSelo:'',qSelo:0,bcIPI:0,pIPI:0,ipi:0};
+  let cstIPI='',bcIPI=0,pIPI=0,ipi=0;
+  for(const c of g.children){
+    const get=(t)=>{const e=c.getElementsByTagNameNS(NS,t)[0];return e?(e.textContent||'').trim():'';};
+    if(!cstIPI) cstIPI=get('CST');
+    bcIPI=parseFloat(get('vBC'))||bcIPI; pIPI=parseFloat(get('pIPI'))||pIPI; ipi=parseFloat(get('vIPI'))||ipi;
+  }
+  return{cstIPI,clEnq:txt(g,'clEnq'),CNPJProd:txt(g,'CNPJProd'),cSelo:txt(g,'cSelo'),qSelo:num(g,'qSelo'),bcIPI,pIPI,ipi};
+}
+
+function extrairPC(imp,grupo){
+  if(!imp) return{cst:'',bc:0,p:0,v:0};
   const g=imp.getElementsByTagNameNS(NS,grupo)[0];
-  if(!g) return 0;
-  for(const c of g.children){ const v=c.getElementsByTagNameNS(NS,campo)[0]; if(v) return parseFloat(v.textContent)||0; }
-  return 0;
+  if(!g) return{cst:'',bc:0,p:0,v:0};
+  for(const c of g.children){
+    const get=(t)=>{const e=c.getElementsByTagNameNS(NS,t)[0];return e?(e.textContent||'').trim():'';};
+    const cst=get('CST'),bc=parseFloat(get('vBC'))||0,p=parseFloat(get('pPIS')||get('pCOFINS'))||0,v=parseFloat(get('vPIS')||get('vCOFINS'))||0;
+    if(cst||v) return{cst,bc,p,v};
+  }
+  return{cst:'',bc:0,p:0,v:0};
+}
+
+function extrairRastro(prod){
+  if(!prod) return{nLote:'',qLote:0,dFab:'',dVal:'',cAgreg:''};
+  const r=prod.getElementsByTagNameNS(NS,'rastro')[0];
+  if(!r) return{nLote:'',qLote:0,dFab:'',dVal:'',cAgreg:''};
+  return{nLote:txt(r,'nLote'),qLote:num(r,'qLote'),dFab:txt(r,'dFab'),dVal:txt(r,'dVal'),cAgreg:txt(r,'cAgreg')};
 }
 
 function parseNFe(xmlStr){
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlStr,'application/xml');
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(xmlStr,'application/xml');
   if(doc.querySelector('parsererror')) throw new Error('XML mal formado');
-  const infNFe = getNS(doc,'infNFe')[0];
+  const infNFe=getNS(doc,'infNFe')[0];
   if(!infNFe) throw new Error('infNFe não encontrado');
-
-  const chave    = (infNFe.getAttribute('Id')||'').replace('NFe','');
-  const ide      = getNS(doc,'ide')[0];
-  const emit     = getNS(doc,'emit')[0];
-  const dest     = getNS(doc,'dest')[0];
-  const ender    = emit ? emit.getElementsByTagNameNS(NS,'enderEmit')[0] : null;
-  const enderDest= dest ? dest.getElementsByTagNameNS(NS,'enderDest')[0] : null;
-  const icmsTot  = getNS(doc,'ICMSTot')[0];
-  const transp   = getNS(doc,'transp')[0];
-  const transpNome = transp ? (txt(transp,'xNome')||txt(transp,'xNomeTransp')) : '';
-  const transpMod  = transp ? txt(transp,'modFrete') : '';
-
-  const dhEmi = txt(ide,'dhEmi')||txt(ide,'dEmi');
-
-  const nota = {
-    chave,
-    numero:   txt(ide,'nNF'),
-    serie:    txt(ide,'serie'),
-    data:     dhEmi?dhEmi.substring(0,10):'',
-    natOp:    txt(ide,'natOp'),
-    tpNF:     tpNFmap[txt(ide,'tpNF')]||txt(ide,'tpNF'),
-    finNFe:   finNFeMap[txt(ide,'finNFe')]||txt(ide,'finNFe'),
-    emitCNPJ: txt(emit,'CNPJ'),
-    emitNome: txt(emit,'xNome'),
+  const chave=(infNFe.getAttribute('Id')||'').replace('NFe','');
+  const ide=getNS(doc,'ide')[0],emit=getNS(doc,'emit')[0],dest=getNS(doc,'dest')[0];
+  const ender=emit?emit.getElementsByTagNameNS(NS,'enderEmit')[0]:null;
+  const enderDest=dest?dest.getElementsByTagNameNS(NS,'enderDest')[0]:null;
+  const tot=getNS(doc,'ICMSTot')[0],transp=getNS(doc,'transp')[0],cobr=getNS(doc,'cobr')[0];
+  const fat=cobr?cobr.getElementsByTagNameNS(NS,'fat')[0]:null;
+  const infAdic=getNS(doc,'infAdic')[0];
+  const vol=transp?transp.getElementsByTagNameNS(NS,'vol')[0]:null;
+  const veicT=transp?transp.getElementsByTagNameNS(NS,'veicTransp')[0]:null;
+  const transpMod=transp?txt(transp,'modFrete'):'';
+  const dhEmi=txt(ide,'dhEmi')||txt(ide,'dEmi');
+  const dups=[...getNS(doc,'dup')].map(d=>`${txt(d,'nDup')}·${txt(d,'dVenc')}·${txt(d,'vDup')}`).join(' | ');
+  const nfeRefs=[...getNS(doc,'NFref')].map(r=>txt(r,'refNFe')).filter(Boolean).join(' | ');
+  const nota={
+    chave,numero:txt(ide,'nNF'),serie:txt(ide,'serie'),data:dhEmi?dhEmi.substring(0,10):'',
+    natOp:txt(ide,'natOp'),tpNF:tpNFmap[txt(ide,'tpNF')]||txt(ide,'tpNF'),
+    finNFe:finMap[txt(ide,'finNFe')]||txt(ide,'finNFe'),
+    emitCNPJ:txt(emit,'CNPJ'),emitNome:txt(emit,'xNome'),
     ufEmissao:ender?txt(ender,'UF'):txt(ide,'cUF'),
-    emitIE:   txt(emit,'IE'),
-    destDoc:  dest?(txt(dest,'CNPJ')||txt(dest,'CPF')):'',
-    destNome: dest?txt(dest,'xNome'):'',
-    destIE:   dest?txt(dest,'IE'):'',
-    destMun:  enderDest?txt(enderDest,'xMun'):'',
-    destUF:   enderDest?txt(enderDest,'UF'):'',
-    destEmail:dest?txt(dest,'email'):'',
-    vNF:      num(icmsTot,'vNF'),
-    vBC:      num(icmsTot,'vBC'),
-    vICMS:    num(icmsTot,'vICMS'),
-    vBCST:    num(icmsTot,'vBCST'),
-    vST:      num(icmsTot,'vST'),
-    vIPI:     num(icmsTot,'vIPI'),
-    vPIS:     num(icmsTot,'vPIS'),
-    vCOFINS:  num(icmsTot,'vCOFINS'),
-    vDesc:    num(icmsTot,'vDesc'),
-    vFrete:   num(icmsTot,'vFrete'),
-    vSeg:     num(icmsTot,'vSeg'),
-    vOutro:   num(icmsTot,'vOutro'),
-    vTotTrib: num(icmsTot,'vTotTrib'),
+    emitIE:txt(emit,'IE'),emitIM:txt(emit,'IM'),emitCNAE:txt(emit,'CNAE'),
+    emitCRT:crtMap[txt(emit,'CRT')]||txt(emit,'CRT'),
+    emitMun:ender?txt(ender,'xMun'):'',emitCEP:ender?txt(ender,'CEP'):'',emitFone:ender?txt(ender,'fone'):'',
+    destDoc:dest?(txt(dest,'CNPJ')||txt(dest,'CPF')):'',destNome:dest?txt(dest,'xNome'):'',
+    destUF:enderDest?txt(enderDest,'UF'):'',destIE:dest?txt(dest,'IE'):'',
+    destIndIE:indIEMap[dest?txt(dest,'indIEDest'):'']||'',
+    destMun:enderDest?txt(enderDest,'xMun'):'',destCEP:enderDest?txt(enderDest,'CEP'):'',
+    destFone:enderDest?txt(enderDest,'fone'):'',destEmail:dest?txt(dest,'email'):'',
+    vNF:num(tot,'vNF'),vDesc:num(tot,'vDesc'),vFrete:num(tot,'vFrete'),
+    vSeg:num(tot,'vSeg'),vOutro:num(tot,'vOutro'),vTotTrib:num(tot,'vTotTrib'),
+    vBC:num(tot,'vBC'),vICMS:num(tot,'vICMS'),vBCST:num(tot,'vBCST'),vST:num(tot,'vST'),
+    vFCP:num(tot,'vFCP'),vFCPST:num(tot,'vFCPST'),vFCPSTRet:num(tot,'vFCPSTRet'),
+    vIPI:num(tot,'vIPI'),vPIS:num(tot,'vPIS'),vCOFINS:num(tot,'vCOFINS'),
     transpMod:modFreteMap[transpMod]||transpMod,
-    transpNome,
+    transpNome:transp?(txt(transp,'xNome')||txt(transp,'xNomeTransp')):'',
+    transpCNPJ:transp?txt(transp,'CNPJ'):'',
+    transpPlaca:veicT?txt(veicT,'placa'):'',transpUFVeic:veicT?txt(veicT,'UF'):'',
+    transpRNTRC:transp?txt(transp,'RNTRC'):'',
+    transpQVol:vol?txt(vol,'qVol'):'',transpEsp:vol?txt(vol,'esp'):'',
+    transpPesoB:vol?txt(vol,'pesoB'):'',transpPesoL:vol?txt(vol,'pesoL'):'',
+    fatNro:fat?txt(fat,'nFat'):'',fatVOrig:fat?num(fat,'vOrig'):0,
+    fatVDesc:fat?num(fat,'vDesc'):0,fatVLiq:fat?num(fat,'vLiq'):0,
+    duplicatas:dups,chNFeRef:nfeRefs,
+    infCpl:infAdic?txt(infAdic,'infCpl'):'',infAdFisco:infAdic?txt(infAdic,'infAdFisco'):'',
   };
-
-  const itens = [];
+  const itens=[];
   for(const det of getNS(doc,'det')){
-    const prod = det.getElementsByTagNameNS(NS,'prod')[0];
-    const imp  = det.getElementsByTagNameNS(NS,'imposto')[0];
-    const {icms,icmsST,bcICMS,bcST,CST,pICMS,pICMSST} = extrairICMSItem(imp);
+    const prod=det.getElementsByTagNameNS(NS,'prod')[0];
+    const imp=det.getElementsByTagNameNS(NS,'imposto')[0];
+    const icmsDados=extrairICMSItem(imp);
+    const ipiDados=extrairIPI(imp);
+    const pisDados=extrairPC(imp,'PIS');
+    const cofDados=extrairPC(imp,'COFINS');
+    const rastro=extrairRastro(prod);
     itens.push({
-      chave, numero:nota.numero,
-      emitCNPJ:nota.emitCNPJ, emitNome:nota.emitNome, ufEmissao:nota.ufEmissao,
-      destDoc:nota.destDoc,   destNome:nota.destNome,
-      nitem: det.getAttribute('nItem')||'',
-      cProd: txt(prod,'cProd'), xProd:txt(prod,'xProd'),
-      NCM:   txt(prod,'NCM'),   CEST: txt(prod,'CEST'),
-      CFOP:  txt(prod,'CFOP'),  uCom: txt(prod,'uCom'),
-      qCom:  num(prod,'qCom'),  vUnCom:num(prod,'vUnCom'), vProd:num(prod,'vProd'),
-      vDesc: num(prod,'vDesc'),
-      CST, pICMS, bcICMS, icms, pICMSST, bcST, icmsST,
-      ipi:    extrairImposto(imp,'IPI','vIPI'),
-      pis:    extrairImposto(imp,'PIS','vPIS'),
-      cofins: extrairImposto(imp,'COFINS','vCOFINS'),
+      chave,numero:nota.numero,
+      emitCNPJ:nota.emitCNPJ,emitNome:nota.emitNome,ufEmissao:nota.ufEmissao,
+      destDoc:nota.destDoc,destNome:nota.destNome,
+      nitem:det.getAttribute('nItem')||'',
+      cProd:txt(prod,'cProd'),xProd:txt(prod,'xProd'),
+      NCM:txt(prod,'NCM'),CEST:txt(prod,'CEST'),CFOP:txt(prod,'CFOP'),
+      uCom:txt(prod,'uCom'),qCom:num(prod,'qCom'),vUnCom:num(prod,'vUnCom'),vProd:num(prod,'vProd'),
+      vDescItem:num(prod,'vDesc'),infAdProd:txt(prod,'infAdProd'),
+      cEAN:txt(prod,'cEAN'),xPed:txt(prod,'xPed'),nItemPed:txt(prod,'nItemPed'),
+      ...rastro,...icmsDados,...ipiDados,
+      cstPIS:pisDados.cst,bcPIS:pisDados.bc,pPIS:pisDados.p,pis:pisDados.v,
+      cstCOFINS:cofDados.cst,bcCOFINS:cofDados.bc,pCOFINS:cofDados.p,cofins:cofDados.v,
     });
   }
-  return {nota, itens};
+  return{nota,itens};
 }
 
-/* ── UI ── */
-function addLog(msg,tipo){ const el=document.getElementById('log'); el.style.display='block'; el.innerHTML+=`<div class="${tipo}">${msg}</div>`; el.scrollTop=el.scrollHeight; }
+/* ══════════ ZIP ══════════ */
+async function extrairXMLsDoZip(file){
+  const zip=await JSZip.loadAsync(file);
+  const xmls=[];
+  const promises=[];
+  zip.forEach((path,entry)=>{
+    if(!entry.dir&&path.toLowerCase().endsWith('.xml'))
+      promises.push(entry.async('string').then(c=>xmls.push({name:path.split('/').pop(),content:c})));
+  });
+  await Promise.all(promises);
+  return xmls;
+}
+
+/* ══════════ ALERTAS ══════════ */
+function computeAlertas(){
+  const panel=document.getElementById('alerts-panel');
+  panel.innerHTML='';
+  const alertas=[];
+  // Chaves duplicadas
+  const chavesVistas=new Map();
+  todasNotas.forEach(n=>{ if(!chavesVistas.has(n.chave)) chavesVistas.set(n.chave,0); chavesVistas.set(n.chave,chavesVistas.get(n.chave)+1); });
+  const dups=[...chavesVistas.entries()].filter(([,v])=>v>1).map(([k])=>k);
+  if(dups.length) alertas.push({tipo:'danger',titulo:`⚠️ ${dups.length} chave(s) duplicada(s) no lote`,lista:dups});
+  // Notas não-normais
+  const naoNormais=todasNotas.filter(n=>n.finNFe&&n.finNFe!=='Normal');
+  if(naoNormais.length) alertas.push({tipo:'warn',titulo:`📋 ${naoNormais.length} nota(s) não-normal (devolução / complementar / ajuste)`,lista:naoNormais.map(n=>`NF ${n.numero} (${n.serie}) — ${n.finNFe}`)});
+  // CEST com ICMS-ST zerado
+  const cestSemST=todosItens.filter(i=>i.CEST&&i.CEST!==''&&(!i.icmsST||i.icmsST===0));
+  if(cestSemST.length) alertas.push({tipo:'info',titulo:`🔍 ${cestSemST.length} item(ns) com CEST preenchido mas ICMS-ST zerado`,lista:cestSemST.map(i=>`NF ${i.numero} item ${i.nitem} — ${i.xProd}`)});
+  if(!alertas.length){ panel.style.display='none'; return; }
+  panel.style.display='block';
+  alertas.forEach(a=>{
+    const blk=document.createElement('div');
+    blk.className=`alert-block ${a.tipo}`;
+    blk.innerHTML=`<div class="alert-hdr" onclick="this.nextElementSibling.classList.toggle('open')">${a.titulo} ▾</div>
+      <div class="alert-body"><ul>${a.lista.map(l=>`<li>${l}</li>`).join('')}</ul></div>`;
+    panel.appendChild(blk);
+  });
+}
+
+/* ══════════ UI ══════════ */
+function addLog(msg,tipo){const el=document.getElementById('log');el.style.display='block';el.innerHTML+=`<div class="${tipo}">${msg}</div>`;el.scrollTop=el.scrollHeight;}
 
 function limpar(){
   todasNotas=[];todosItens=[];
   document.getElementById('log').innerHTML='';
-  ['log','stats','prog-wrap'].forEach(id=>document.getElementById(id).style.display='none');
+  ['log','stats','prog-wrap','alerts-panel'].forEach(id=>document.getElementById(id).style.display='none');
   document.getElementById('btn-excel').disabled=true;
   document.getElementById('btn-limpar').style.display='none';
-  document.getElementById('drop-label').textContent='Clique ou arraste os arquivos XML aqui';
+  document.getElementById('drop-label').textContent='Clique ou arraste os arquivos aqui';
   document.getElementById('pbar').style.width='0%';
   document.getElementById('ppct').textContent='0%';
   document.getElementById('file-input').value='';
+  document.getElementById('filter-counter').style.display='none';
 }
 
-async function processar(files){
+async function processarEntrada(files){
   limpar();
-  const arr=Array.from(files).filter(f=>f.name.toLowerCase().endsWith('.xml'));
-  if(!arr.length){addLog('Nenhum arquivo .xml encontrado.','err');return;}
+  const lista=[];
+  for(const f of Array.from(files)){
+    const nome=f.name.toLowerCase();
+    if(nome.endsWith('.xml')) lista.push({name:f.name,content:await f.text()});
+    else if(nome.endsWith('.zip')){
+      addLog(`📦 Extraindo ${f.name}…`,'inf');
+      try{ const xmls=await extrairXMLsDoZip(f); addLog(`   → ${xmls.length} XML(s) no ZIP`,'inf'); lista.push(...xmls); }
+      catch(e){ addLog(`✗ Erro ZIP ${f.name}: ${e.message}`,'err'); }
+    }
+  }
+  if(!lista.length){ addLog('Nenhum arquivo XML encontrado.','err'); return; }
   document.getElementById('stats').style.display='grid';
   document.getElementById('prog-wrap').style.display='block';
-  document.getElementById('drop-label').textContent=`Processando ${arr.length} arquivo(s)…`;
+  document.getElementById('drop-label').textContent=`Processando ${lista.length} arquivo(s)…`;
   let ok=0,erros=0;
-  for(let i=0;i<arr.length;i++){
-    const f=arr[i];
+  for(let i=0;i<lista.length;i++){
+    const{name,content}=lista[i];
     try{
-      const {nota,itens}=parseNFe(await f.text());
-      todasNotas.push(nota); todosItens.push(...itens); ok++;
-      addLog(`✓ ${f.name} → NF ${nota.numero||'?'} | UF: ${nota.ufEmissao||'?'} | ${itens.length} item(ns)`,'ok');
-    }catch(e){ erros++; addLog(`✗ ${f.name}: ${e.message}`,'err'); }
-    const pct=Math.round(((i+1)/arr.length)*100);
+      const{nota,itens}=parseNFe(content);
+      todasNotas.push(nota);todosItens.push(...itens);ok++;
+      addLog(`✓ ${name} → NF ${nota.numero||'?'} | UF: ${nota.ufEmissao||'?'} | ${itens.length} item(ns)`,'ok');
+    }catch(e){erros++;addLog(`✗ ${name}: ${e.message}`,'err');}
+    const pct=Math.round(((i+1)/lista.length)*100);
     document.getElementById('pbar').style.width=pct+'%';
     document.getElementById('ppct').textContent=pct+'%';
     document.getElementById('s-notas').textContent=ok;
@@ -503,46 +931,41 @@ async function processar(files){
     document.getElementById('s-erros').textContent=erros;
     await new Promise(r=>setTimeout(r,0));
   }
-  document.getElementById('drop-label').textContent='Clique ou arraste os arquivos XML aqui';
+  document.getElementById('drop-label').textContent='Clique ou arraste os arquivos aqui';
   if(ok>0){
     document.getElementById('btn-excel').disabled=false;
     document.getElementById('btn-limpar').style.display='inline-flex';
     addLog(`─── Concluído: ${ok} nota(s) | ${todosItens.length} item(ns) | ${erros} erro(s)`,'inf');
+    computeAlertas();
+    atualizarContadorFiltro();
   }
 }
 
-/* ── EXPORTAÇÃO ── */
-function colW(arr){return arr.map(w=>({wch:w}));}
-
+/* ══════════ EXPORTAÇÃO ══════════ */
 function exportar(){
+  const notasFilt=todasNotas.filter(n=>notaPassaFiltro(n));
+  const chavesOk=new Set(notasFilt.map(n=>n.chave));
+  const itensFilt=todosItens.filter(i=>chavesOk.has(i.chave));
+  if(!notasFilt.length){alert('Nenhuma nota passou pelos filtros configurados.');return;}
   const wb=XLSX.utils.book_new();
-
-  // Colunas ativas para Notas
-  const colsNota = CAMPOS_NOTA.filter(f=>estadoNota[f.id]);
-  const hNotas   = colsNota.map(f=>f.label);
-  const dNotas   = todasNotas.map(n=>colsNota.map(f=>n[f.id]??''));
-  const wsN=XLSX.utils.aoa_to_sheet([hNotas,...dNotas]);
-  wsN['!cols']=colsNota.map(()=>({wch:18}));
+  const cN=ordemNota.map(id=>CAMPOS_NOTA.find(f=>f.id===id)).filter(Boolean);
+  const wsN=XLSX.utils.aoa_to_sheet([cN.map(f=>f.label),...notasFilt.map(n=>cN.map(f=>n[f.id]??''))]);
+  wsN['!cols']=cN.map(()=>({wch:20}));
   XLSX.utils.book_append_sheet(wb,wsN,'Notas');
-
-  // Colunas ativas para Itens
-  const colsItem = CAMPOS_ITEM.filter(f=>estadoItem[f.id]);
-  const hItens   = colsItem.map(f=>f.label);
-  const dItens   = todosItens.map(i=>colsItem.map(f=>i[f.id]??''));
-  const wsI=XLSX.utils.aoa_to_sheet([hItens,...dItens]);
-  wsI['!cols']=colsItem.map(()=>({wch:18}));
+  const cI=ordemItem.map(id=>CAMPOS_ITEM.find(f=>f.id===id)).filter(Boolean);
+  const wsI=XLSX.utils.aoa_to_sheet([cI.map(f=>f.label),...itensFilt.map(i=>cI.map(f=>i[f.id]??''))]);
+  wsI['!cols']=cI.map(()=>({wch:20}));
   XLSX.utils.book_append_sheet(wb,wsI,'Itens');
-
-  const hoje=new Date().toISOString().substring(0,10);
-  XLSX.writeFile(wb,`nfe_consolidado_${hoje}.xlsx`);
+  XLSX.writeFile(wb,`nfe_st_${new Date().toISOString().substring(0,10)}.xlsx`);
 }
 
-/* ── DRAG & DROP ── */
+/* ══════════ EVENTOS ══════════ */
 const drop=document.getElementById('drop');
-drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('over');});
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
 drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
-drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');processar(e.dataTransfer.files);});
-document.getElementById('file-input').addEventListener('change',e=>processar(e.target.files));
+drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');processarEntrada(e.dataTransfer.files);});
+document.getElementById('file-input').addEventListener('change',e=>processarEntrada(e.target.files));
 </script>
 </body>
 </html>
+

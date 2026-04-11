@@ -206,6 +206,15 @@ mark{background:#fff3b0;border-radius:2px;padding:0 1px}
 .pa-actions{display:flex;gap:8px;flex-wrap:wrap}
 .pa-no-data{text-align:center;padding:30px 20px;color:#888;font-size:13px}
 .pa-detail-row{font-size:11px;color:#666;padding:4px 10px;background:#fafbfc;border-bottom:1px solid #f0f4fb}
+.pa-status{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap}
+.pa-status.sem{background:#fee2e2;color:#991b1b}
+.pa-status.ok{background:#dcfce7;color:#166534}
+.pa-status.diverg{background:#fef3c7;color:#92400e}
+.pa-diff-pos{color:#b91c1c;font-weight:700}
+.pa-diff-neg{color:#166534;font-weight:700}
+.pa-diff-zero{color:#666}
+.pa-tab-btn.active{border-bottom:2px solid #1F3864!important;color:#1F3864!important}
+@media(max-width:600px){.pa-summary{grid-template-columns:1fr 1fr} .pa-sum-card.highlight{grid-column:1/-1}}
 </style>
 </head>
 <body>
@@ -327,11 +336,13 @@ mark{background:#fff3b0;border-radius:2px;padding:0 1px}
             <div class="pa-config-hint">Clique na UF para excluí-la. UFs excluídas (com protocolo) não entram na análise — o remetente deveria ter retido.</div>
           </div>
           <div class="pa-config-row" style="flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px">
-            <span class="pa-config-label">Filtro CEST/NCM:</span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="pa-filtro-cest" checked style="accent-color:#1F3864"> CEST 01.xxx (autopeças)</label>
-              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="pa-filtro-todos-cest"> Todos os itens com CEST</label>
+            <span class="pa-config-label">Filtro CEST / NCM:</span>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="pa-filtro-cest" checked style="accent-color:#1F3864"> CEST 01.xxx</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="pa-filtro-ncm" checked style="accent-color:#1F3864"> NCM autopeças</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="pa-filtro-todos-cest" style="accent-color:#1F3864"> Todos os CESTs</label>
             </div>
+            <div class="pa-config-hint">CEST 01.xxx e NCM autopeças podem ser combinados. "Todos os CESTs" ignora o segmento.</div>
           </div>
         </div>
 
@@ -340,10 +351,18 @@ mark{background:#fff3b0;border-radius:2px;padding:0 1px}
         </button>
 
         <div class="pa-summary" id="pa-summary">
-          <div class="pa-sum-card"><div class="pa-sum-n" id="pa-s-nfes">0</div><div class="pa-sum-l">NF-e</div></div>
-          <div class="pa-sum-card"><div class="pa-sum-n" id="pa-s-itens">0</div><div class="pa-sum-l">Itens ST</div></div>
-          <div class="pa-sum-card"><div class="pa-sum-n" id="pa-s-vlprod">0</div><div class="pa-sum-l">Vl. Produtos</div></div>
-          <div class="pa-sum-card highlight"><div class="pa-sum-n" id="pa-s-stdev">0</div><div class="pa-sum-l">ICMS-ST Devido</div></div>
+          <div class="pa-sum-card"><div class="pa-sum-n" id="pa-s-total">0</div><div class="pa-sum-l">Itens analisados</div></div>
+          <div class="pa-sum-card" style="border-left:3px solid #ef4444"><div class="pa-sum-n" id="pa-s-sem" style="color:#b91c1c">0</div><div class="pa-sum-l">Sem retenção ST</div></div>
+          <div class="pa-sum-card" style="border-left:3px solid #f59e0b"><div class="pa-sum-n" id="pa-s-diverg" style="color:#92400e">0</div><div class="pa-sum-l">MVA divergente</div></div>
+          <div class="pa-sum-card" style="border-left:3px solid #22c55e"><div class="pa-sum-n" id="pa-s-ok" style="color:#166534">0</div><div class="pa-sum-l">ST correto ✓</div></div>
+          <div class="pa-sum-card highlight" style="grid-column:1/-1"><div class="pa-sum-n" id="pa-s-cobrar" style="font-size:22px">R$ 0,00</div><div class="pa-sum-l">Total ICMS-ST a cobrar (sem retenção + diferenças)</div></div>
+        </div>
+
+        <div id="pa-tab-bar" style="display:none;margin-bottom:12px">
+          <div style="display:flex;border-bottom:2px solid #e0e6f0">
+            <button class="pa-tab-btn active" onclick="switchPATab('sem',this)" id="pa-tab-sem" style="flex:1;padding:9px;font-size:12px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:2px solid #1F3864;color:#1F3864;margin-bottom:-2px">🚫 Sem Retenção <span id="pa-tab-sem-n"></span></button>
+            <button class="pa-tab-btn" onclick="switchPATab('verif',this)" id="pa-tab-verif" style="flex:1;padding:9px;font-size:12px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:#888;margin-bottom:-2px">🔍 Verificação ST <span id="pa-tab-verif-n"></span></button>
+          </div>
         </div>
 
         <div id="pa-results"></div>
@@ -1093,15 +1112,27 @@ function exportar(){
 
 /* ══════════ PRÉ-AUDITORIA ══════════ */
 let paResultados=[];
+let paTabAtual='sem';
 const PA_MVA_ORIG=0.7178;
 const PA_UF_EXCL=new Set();
 
-// Regiões para alíquota interestadual (Res. Senado 22/89)
+// NCM autopeças — prefixos 4 dígitos (Conv. 142/18 Anexo II Segmento 01)
+const NCM_AUTOPECAS=[
+  '3815','3819','3820','3917','3918','3923','3926',
+  '4010','4011','4012','4013','4016',
+  '4823','5601','5910','6306','6813','6815',
+  '7007','7009','7014','7311','7320','7325','7326',
+  '8301','8302','8310',
+  '8407','8408','8409','8410','8411','8412','8413','8414','8415',
+  '8421','8425','8431','8481','8482','8483','8484',
+  '8505','8507','8511','8512','8527','8529','8536','8539','8544',
+  '8706','8707','8708','8714',
+  '9026','9029','9031','9032','9104','9401','9613',
+];
+
 const UF_SUL_SUDESTE=new Set(['ES','MG','RJ','SP','PR','RS','SC']);
 
-function getAliqInter(ufEmit){
-  return UF_SUL_SUDESTE.has(ufEmit)?0.12:0.07;
-}
+function getAliqInter(ufEmit){ return UF_SUL_SUDESTE.has(ufEmit)?0.12:0.07; }
 
 function getAliqIntraMA(dataStr){
   if(!dataStr) return 0.23;
@@ -1112,18 +1143,19 @@ function getAliqIntraMA(dataStr){
   return 0.23;
 }
 
-function getAliqIntraLabel(aliq){
-  return (aliq*100).toFixed(0)+'%';
-}
-
 function getMVAAjustada(aliqInter,aliqIntra){
   return ((1+PA_MVA_ORIG)*(1-aliqInter)/(1-aliqIntra))-1;
 }
 
 function isCESTAutopecas(cest){
   if(!cest) return false;
-  const c=cest.replace(/\./g,'');
-  return c.startsWith('01');
+  return cest.replace(/\./g,'').startsWith('01');
+}
+
+function isNCMAutopecas(ncm){
+  if(!ncm) return false;
+  const n=ncm.replace(/\./g,'');
+  return NCM_AUTOPECAS.some(p=>n.startsWith(p));
 }
 
 function togglePA(){
@@ -1134,6 +1166,13 @@ function togglePA(){
 function selectPAModule(mod,el){
   document.querySelectorAll('.pa-mod-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
+}
+
+function switchPATab(tab,el){
+  paTabAtual=tab;
+  document.querySelectorAll('.pa-tab-btn').forEach(b=>{b.classList.remove('active');b.style.borderBottom='2px solid transparent';b.style.color='#888';});
+  el.classList.add('active');el.style.borderBottom='2px solid #1F3864';el.style.color='#1F3864';
+  renderPATable();
 }
 
 function initPAUFPicker(){
@@ -1157,29 +1196,25 @@ initPAUFPicker();
 function executarPreAuditoria(){
   if(!todasNotas.length){alert('Carregue arquivos XML primeiro.');return;}
 
-  const filtroCEST01=document.getElementById('pa-filtro-cest').checked;
+  const filtroCEST=document.getElementById('pa-filtro-cest').checked;
+  const filtroNCM=document.getElementById('pa-filtro-ncm').checked;
   const filtroTodosCEST=document.getElementById('pa-filtro-todos-cest').checked;
 
-  // Mapa de notas por chave
   const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
 
-  // Filtrar itens qualificados
+  // Filtrar itens de autopeças (CEST e/ou NCM), independente de ter ST ou não
   const itensQualif=todosItens.filter(item=>{
     const nota=notaMap.get(item.chave);
     if(!nota) return false;
-    // UF emitente ≠ MA
     if(nota.ufEmissao==='MA') return false;
-    // UF não excluída (com protocolo)
     if(PA_UF_EXCL.has(nota.ufEmissao)) return false;
-    // ICMS-ST zerado no item
-    if(item.icmsST && item.icmsST>0) return false;
-    // Filtro CEST
-    if(filtroCEST01 && !filtroTodosCEST){
-      if(!isCESTAutopecas(item.CEST)) return false;
-    } else if(filtroTodosCEST){
+    if(filtroTodosCEST){
       if(!item.CEST || item.CEST.trim()==='') return false;
     } else {
-      if(!isCESTAutopecas(item.CEST)) return false;
+      let match=false;
+      if(filtroCEST && isCESTAutopecas(item.CEST)) match=true;
+      if(filtroNCM && isNCMAutopecas(item.NCM)) match=true;
+      if(!match) return false;
     }
     return true;
   });
@@ -1187,98 +1222,119 @@ function executarPreAuditoria(){
   if(!itensQualif.length){
     document.getElementById('pa-summary').style.display='none';
     document.getElementById('pa-actions').style.display='none';
+    document.getElementById('pa-tab-bar').style.display='none';
     document.getElementById('pa-results').innerHTML='<div class="pa-no-data">Nenhum item encontrado com os filtros configurados.</div>';
     paResultados=[];
     return;
   }
 
-  // Agrupar por NF-e (chave)
-  const grupos=new Map();
-  itensQualif.forEach(item=>{
-    if(!grupos.has(item.chave)) grupos.set(item.chave,{itens:[],nota:notaMap.get(item.chave)});
-    grupos.get(item.chave).itens.push(item);
+  paResultados=[];
+
+  // Pré-calcular vProd total por NF-e (para rateio de frete/seguro/outros)
+  const vProdPorNFe=new Map();
+  todosItens.forEach(item=>{
+    const cur=vProdPorNFe.get(item.chave)||0;
+    vProdPorNFe.set(item.chave, cur+(item.vProd||0));
   });
 
-  paResultados=[];
-  let totalSTDevido=0, totalVlProd=0, totalItens=0;
-
-  grupos.forEach(({itens,nota},chave)=>{
-    // Somar valores dos itens qualificados
-    const vlProdST=itens.reduce((s,i)=>s+(i.vProd||0),0);
-    const vlIPIST=itens.reduce((s,i)=>s+(i.ipi||0),0);
-
-    // Ratear frete e outros da NF-e proporcionalmente aos itens ST
-    const vlProdTotal=nota.vNF?nota.vNF:todasNotas.find(n=>n.chave===chave)?.vNF||0;
-    const proporcao=vlProdTotal>0?(vlProdST/vlProdTotal):1;
-    const freteRateado=(nota.vFrete||0)*proporcao;
-    const outrosRateado=(nota.vOutro||0)*proporcao;
-
-    // Base pré-MVA
-    const basePreMVA=vlProdST+freteRateado+vlIPIST+outrosRateado;
-
-    // Determinar regime
+  itensQualif.forEach(item=>{
+    const nota=notaMap.get(item.chave);
     const crt=nota.emitCRT||'';
-    const isSimples=crt.includes('Simples Nacional')||crt==='1'||(nota.vICMS===0 && nota.vBC===0);
-
-    // Alíquotas
+    const isSimples=crt.includes('Simples')||crt==='1'||(nota.vICMS===0 && nota.vBC===0);
     const aliqInter=getAliqInter(nota.ufEmissao);
     const aliqIntra=getAliqIntraMA(nota.data);
 
-    let mva, bcST, icmsProprioDeducao, icmsSTDevido;
+    // Rateio proporcional de frete, seguro e outros despesas da NF-e
+    const vProdTotalNFe=vProdPorNFe.get(item.chave)||1;
+    const proporcao=(item.vProd||0)/vProdTotalNFe;
+    const freteRat=(nota.vFrete||0)*proporcao;
+    const seguroRat=(nota.vSeg||0)*proporcao;
+    const outrosRat=(nota.vOutro||0)*proporcao;
 
+    // Base pré-MVA = vProd + IPI + frete rateado + seguro rateado + outros rateados
+    const basePreMVA=(item.vProd||0)+(item.ipi||0)+freteRat+seguroRat+outrosRat;
+
+    const mvaCorreta=isSimples?PA_MVA_ORIG:getMVAAjustada(aliqInter,aliqIntra);
+    const bcSTCorreta=basePreMVA*(1+mvaCorreta);
+    let icmsProprioCorreto;
     if(isSimples){
-      // Simples Nacional: MVA original, ICMS fictício
-      mva=PA_MVA_ORIG;
-      bcST=basePreMVA*(1+mva);
-      icmsProprioDeducao=basePreMVA*aliqInter; // fictício
-      icmsSTDevido=(bcST*aliqIntra)-icmsProprioDeducao;
+      icmsProprioCorreto=basePreMVA*aliqInter;
     } else {
-      // Regime Normal: MVA ajustada, ICMS destacado
-      mva=getMVAAjustada(aliqInter,aliqIntra);
-      bcST=basePreMVA*(1+mva);
-      // ICMS próprio = valor do ICMS destacado na NF-e, proporcional aos itens ST
-      const icmsDestacadoTotal=nota.vICMS||0;
-      icmsProprioDeducao=icmsDestacadoTotal*proporcao;
-      icmsSTDevido=(bcST*aliqIntra)-icmsProprioDeducao;
+      icmsProprioCorreto=item.icms||0;
+    }
+    let icmsSTCorreto=(bcSTCorreta*aliqIntra)-icmsProprioCorreto;
+    if(icmsSTCorreto<0) icmsSTCorreto=0;
+
+    const stDeclarado=item.icmsST||0;
+    const bcSTDeclarado=item.bcST||0;
+    let status, mvaUsada, diferenca;
+
+    if(stDeclarado===0 && bcSTDeclarado===0){
+      status='sem';
+      mvaUsada=null;
+      diferenca=icmsSTCorreto;
+    } else {
+      mvaUsada=basePreMVA>0?((bcSTDeclarado/basePreMVA)-1):null;
+      diferenca=icmsSTCorreto-stDeclarado;
+      if(Math.abs(diferenca)<=0.50){
+        status='ok';
+        diferenca=0;
+      } else {
+        status='diverg';
+      }
     }
 
-    if(icmsSTDevido<0) icmsSTDevido=0;
-
-    const resultado={
-      chave, numero:nota.numero, serie:nota.serie, data:nota.data,
-      ufEmit:nota.ufEmissao, emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ,
-      emitCRT:crt,
-      qtdItens:itens.length,
-      cests:[...new Set(itens.map(i=>i.CEST).filter(Boolean))].join(', '),
-      vlProdST, freteRateado, vlIPIST, outrosRateado,
-      basePreMVA,
-      regime:isSimples?'SN':'Normal',
+    paResultados.push({
+      chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
+      data:nota.data, ufEmit:nota.ufEmissao,
+      emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ, emitCRT:crt,
+      nitem:item.nitem, cProd:item.cProd, xProd:item.xProd,
+      NCM:item.NCM, CEST:item.CEST, CFOP:item.CFOP,
+      vProd:item.vProd||0, ipiItem:item.ipi||0,
+      freteRat, seguroRat, outrosRat,
+      icmsItem:item.icms||0,
+      basePreMVA, regime:isSimples?'SN':'Normal',
       aliqInter, aliqIntra,
-      mva, bcST,
-      icmsProprioDeducao,
-      icmsSTDevido,
-      itensDetalhados:itens,
-    };
-
-    paResultados.push(resultado);
-    totalSTDevido+=icmsSTDevido;
-    totalVlProd+=vlProdST;
-    totalItens+=itens.length;
+      bcSTDeclarado, stDeclarado,
+      mvaUsada,
+      mvaCorreta, bcSTCorreta, icmsProprioCorreto, icmsSTCorreto,
+      status, diferenca,
+      matchCEST:isCESTAutopecas(item.CEST),
+      matchNCM:isNCMAutopecas(item.NCM),
+    });
   });
 
-  // Ordenar por data
-  paResultados.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  const ordemStatus={sem:0,diverg:1,ok:2};
+  paResultados.sort((a,b)=>ordemStatus[a.status]-ordemStatus[b.status]||(a.data||'').localeCompare(b.data||''));
 
-  // Atualizar resumo
+  const semRetencao=paResultados.filter(r=>r.status==='sem');
+  const divergentes=paResultados.filter(r=>r.status==='diverg');
+  const corretos=paResultados.filter(r=>r.status==='ok');
+
+  const totalCobrar=semRetencao.reduce((s,r)=>s+r.icmsSTCorreto,0)
+    +divergentes.filter(r=>r.diferenca>0).reduce((s,r)=>s+r.diferenca,0);
+
   const fmt=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById('pa-s-nfes').textContent=paResultados.length;
-  document.getElementById('pa-s-itens').textContent=totalItens;
-  document.getElementById('pa-s-vlprod').textContent='R$ '+fmt(totalVlProd);
-  document.getElementById('pa-s-stdev').textContent='R$ '+fmt(totalSTDevido);
+
+  document.getElementById('pa-s-total').textContent=paResultados.length;
+  document.getElementById('pa-s-sem').textContent=semRetencao.length;
+  document.getElementById('pa-s-diverg').textContent=divergentes.length;
+  document.getElementById('pa-s-ok').textContent=corretos.length;
+  document.getElementById('pa-s-cobrar').textContent='R$ '+fmt(totalCobrar);
+
   document.getElementById('pa-summary').style.display='grid';
   document.getElementById('pa-actions').style.display='flex';
+  document.getElementById('pa-tab-bar').style.display='block';
 
-  // Renderizar tabela
+  const nSem=semRetencao.length, nVerif=divergentes.length+corretos.length;
+  document.getElementById('pa-tab-sem-n').textContent='('+nSem+')';
+  document.getElementById('pa-tab-verif-n').textContent='('+nVerif+')';
+
+  paTabAtual='sem';
+  document.querySelectorAll('.pa-tab-btn').forEach(b=>{b.classList.remove('active');b.style.borderBottom='2px solid transparent';b.style.color='#888';});
+  const tabSem=document.getElementById('pa-tab-sem');
+  tabSem.classList.add('active');tabSem.style.borderBottom='2px solid #1F3864';tabSem.style.color='#1F3864';
+
   renderPATable();
 }
 
@@ -1287,52 +1343,102 @@ function renderPATable(){
   const pct=v=>(v*100).toFixed(2)+'%';
   const container=document.getElementById('pa-results');
 
-  let totProd=0,totBase=0,totBC=0,totICMSProp=0,totST=0;
-  paResultados.forEach(r=>{totProd+=r.vlProdST;totBase+=r.basePreMVA;totBC+=r.bcST;totICMSProp+=r.icmsProprioDeducao;totST+=r.icmsSTDevido;});
+  const dados=paTabAtual==='sem'
+    ? paResultados.filter(r=>r.status==='sem')
+    : paResultados.filter(r=>r.status!=='sem');
 
-  let html=`<div class="pa-table-wrap"><table class="pa-table">
-    <thead><tr>
-      <th>Período</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Regime</th>
-      <th>Itens</th>
-      <th class="right">Vl. Prod ST</th>
-      <th class="right">Base Pré-MVA</th>
-      <th>ALQ Inter</th><th>ALQ Intra</th><th>MVA</th>
-      <th class="right">BC-ST</th>
-      <th class="right">ICMS Próprio</th>
-      <th class="right" style="background:#2a4a7a">ICMS-ST Devido</th>
-    </tr></thead><tbody>`;
+  if(!dados.length){
+    container.innerHTML='<div class="pa-no-data">'+(paTabAtual==='sem'?'Nenhum item sem retenção encontrado.':'Nenhum item com retenção ST encontrado.')+'</div>';
+    return;
+  }
 
-  paResultados.forEach(r=>{
-    const cls=r.regime==='SN'?'sn':'';
-    const regTag=r.regime==='SN'?'<span class="pa-regime-tag sn">SN</span>':'<span class="pa-regime-tag normal">Normal</span>';
-    html+=`<tr class="${cls}">
-      <td>${r.data||''}</td>
-      <td>${r.numero||''}</td>
-      <td><strong>${r.ufEmit}</strong></td>
-      <td title="${r.emitCNPJ}">${(r.emitNome||'').substring(0,30)}</td>
-      <td>${regTag}</td>
-      <td style="text-align:center">${r.qtdItens}</td>
-      <td class="right">${fmt(r.vlProdST)}</td>
-      <td class="right">${fmt(r.basePreMVA)}</td>
-      <td style="text-align:center">${pct(r.aliqInter)}</td>
-      <td style="text-align:center">${pct(r.aliqIntra)}</td>
-      <td style="text-align:center">${pct(r.mva)}</td>
-      <td class="right">${fmt(r.bcST)}</td>
-      <td class="right">${fmt(r.icmsProprioDeducao)}</td>
-      <td class="right" style="font-weight:700;color:#1F3864">${fmt(r.icmsSTDevido)}</td>
-    </tr>`;
-  });
+  let html='<div class="pa-table-wrap"><table class="pa-table"><thead><tr>';
 
-  html+=`</tbody><tfoot><tr>
-    <td colspan="6" style="text-align:right">TOTAIS →</td>
-    <td class="right">${fmt(totProd)}</td>
-    <td class="right">${fmt(totBase)}</td>
-    <td colspan="3"></td>
-    <td class="right">${fmt(totBC)}</td>
-    <td class="right">${fmt(totICMSProp)}</td>
-    <td class="right" style="color:#1F3864;font-size:13px">${fmt(totST)}</td>
-  </tr></tfoot></table></div>`;
+  if(paTabAtual==='sem'){
+    html+='<th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Regime</th>';
+    html+='<th>Item</th><th>Descrição</th><th>CEST</th><th>NCM</th>';
+    html+='<th class="right">Vl. Produto</th>';
+    html+='<th class="right">Base Pré-MVA</th>';
+    html+='<th>ALQ i</th><th>ALQ m</th><th>MVA</th>';
+    html+='<th class="right">BC-ST</th>';
+    html+='<th class="right">ICMS Próprio</th>';
+    html+='<th class="right" style="background:#7f1d1d">ST Devido</th>';
+    html+='</tr></thead><tbody>';
 
+    let totProd=0,totBase=0,totBC=0,totProp=0,totST=0;
+    dados.forEach(r=>{
+      const regTag=r.regime==='SN'?'<span class="pa-regime-tag sn">SN</span>':'<span class="pa-regime-tag normal">RN</span>';
+      totProd+=r.vProd;totBase+=r.basePreMVA;totBC+=r.bcSTCorreta;totProp+=r.icmsProprioCorreto;totST+=r.icmsSTCorreto;
+      html+='<tr class="'+(r.regime==='SN'?'sn':'')+'">';
+      html+='<td>'+r.data+'</td><td>'+r.numero+'</td><td><strong>'+r.ufEmit+'</strong></td>';
+      html+='<td title="'+r.emitCNPJ+'">'+(r.emitNome||'').substring(0,25)+'</td>';
+      html+='<td>'+regTag+'</td>';
+      html+='<td style="text-align:center">'+r.nitem+'</td>';
+      html+='<td title="'+r.xProd+'">'+(r.xProd||'').substring(0,30)+'</td>';
+      html+='<td>'+(r.CEST||'\u2014')+'</td><td>'+(r.NCM||'')+'</td>';
+      html+='<td class="right">'+fmt(r.vProd)+'</td>';
+      html+='<td class="right">'+fmt(r.basePreMVA)+'</td>';
+      html+='<td style="text-align:center">'+pct(r.aliqInter)+'</td>';
+      html+='<td style="text-align:center">'+pct(r.aliqIntra)+'</td>';
+      html+='<td style="text-align:center">'+pct(r.mvaCorreta)+'</td>';
+      html+='<td class="right">'+fmt(r.bcSTCorreta)+'</td>';
+      html+='<td class="right">'+fmt(r.icmsProprioCorreto)+'</td>';
+      html+='<td class="right" style="font-weight:700;color:#b91c1c">'+fmt(r.icmsSTCorreto)+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody><tfoot><tr>';
+    html+='<td colspan="9" style="text-align:right">TOTAIS \u2192</td>';
+    html+='<td class="right">'+fmt(totProd)+'</td><td class="right">'+fmt(totBase)+'</td>';
+    html+='<td colspan="3"></td><td class="right">'+fmt(totBC)+'</td>';
+    html+='<td class="right">'+fmt(totProp)+'</td>';
+    html+='<td class="right" style="color:#b91c1c;font-size:13px">'+fmt(totST)+'</td>';
+    html+='</tr></tfoot>';
+
+  } else {
+    html+='<th>Status</th><th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Regime</th>';
+    html+='<th>Item</th><th>Descrição</th><th>CEST</th>';
+    html+='<th class="right">Vl. Prod</th>';
+    html+='<th class="right">BC-ST Decl.</th><th class="right">ST Decl.</th>';
+    html+='<th>MVA Usada</th><th>MVA Correta</th>';
+    html+='<th class="right">BC-ST Corr.</th><th class="right">ST Correto</th>';
+    html+='<th class="right">Diferença</th>';
+    html+='</tr></thead><tbody>';
+
+    let totDiff=0;
+    dados.forEach(r=>{
+      const regTag=r.regime==='SN'?'<span class="pa-regime-tag sn">SN</span>':'<span class="pa-regime-tag normal">RN</span>';
+      const statusTag=r.status==='ok'
+        ?'<span class="pa-status ok">\u2713 OK</span>'
+        :'<span class="pa-status diverg">\u26A0 DIVERG</span>';
+      const diffClass=r.diferenca>0.5?'pa-diff-pos':r.diferenca<-0.5?'pa-diff-neg':'pa-diff-zero';
+      const diffPrefix=r.diferenca>0?'+':'';
+      totDiff+=r.diferenca;
+
+      html+='<tr>';
+      html+='<td>'+statusTag+'</td>';
+      html+='<td>'+r.data+'</td><td>'+r.numero+'</td><td><strong>'+r.ufEmit+'</strong></td>';
+      html+='<td title="'+r.emitCNPJ+'">'+(r.emitNome||'').substring(0,22)+'</td>';
+      html+='<td>'+regTag+'</td>';
+      html+='<td style="text-align:center">'+r.nitem+'</td>';
+      html+='<td title="'+r.xProd+'">'+(r.xProd||'').substring(0,25)+'</td>';
+      html+='<td>'+(r.CEST||'\u2014')+'</td>';
+      html+='<td class="right">'+fmt(r.vProd)+'</td>';
+      html+='<td class="right">'+fmt(r.bcSTDeclarado)+'</td>';
+      html+='<td class="right">'+fmt(r.stDeclarado)+'</td>';
+      html+='<td style="text-align:center">'+(r.mvaUsada!==null?pct(r.mvaUsada):'\u2014')+'</td>';
+      html+='<td style="text-align:center;font-weight:600">'+pct(r.mvaCorreta)+'</td>';
+      html+='<td class="right">'+fmt(r.bcSTCorreta)+'</td>';
+      html+='<td class="right">'+fmt(r.icmsSTCorreto)+'</td>';
+      html+='<td class="right '+diffClass+'">'+diffPrefix+fmt(r.diferenca)+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody><tfoot><tr>';
+    html+='<td colspan="16" style="text-align:right">Soma diferenças \u2192</td>';
+    html+='<td class="right '+(totDiff>0?'pa-diff-pos':'pa-diff-zero')+'" style="font-size:13px">'+(totDiff>0?'+':'')+fmt(totDiff)+'</td>';
+    html+='</tr></tfoot>';
+  }
+
+  html+='</table></div>';
   container.innerHTML=html;
 }
 
@@ -1340,100 +1446,110 @@ function limparPA(){
   paResultados=[];
   document.getElementById('pa-summary').style.display='none';
   document.getElementById('pa-actions').style.display='none';
+  document.getElementById('pa-tab-bar').style.display='none';
   document.getElementById('pa-results').innerHTML='';
 }
 
 function exportarPA(){
   if(!paResultados.length){alert('Execute a pré-auditoria primeiro.');return;}
   const wb=XLSX.utils.book_new();
-  const fmt2=v=>typeof v==='number'?Math.round(v*100)/100:v;
+  const r2=v=>typeof v==='number'?Math.round(v*100)/100:v;
 
-  // Aba 1: NF-e com cálculo ST
-  const headNFe=['Período','NF-e','Série','Chave de Acesso','UF Emitente','CNPJ Emitente','Emitente','CRT',
-    'Regime','Qtd Itens ST','CESTs','Vl. Produtos ST','Frete Rateado','IPI Rateado','Outros Rateado',
-    'Base Pré-MVA','ALQ Interestadual','ALQ Interna MA','MVA','BC-ST','ICMS Próprio (dedução)','ICMS-ST Devido'];
-  const dataNFe=paResultados.map(r=>[
-    r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT,
-    r.regime,r.qtdItens,r.cests,
-    fmt2(r.vlProdST),fmt2(r.freteRateado),fmt2(r.vlIPIST),fmt2(r.outrosRateado),
-    fmt2(r.basePreMVA),fmt2(r.aliqInter),fmt2(r.aliqIntra),fmt2(r.mva),
-    fmt2(r.bcST),fmt2(r.icmsProprioDeducao),fmt2(r.icmsSTDevido)
+  // Aba 1: Itens SEM retenção
+  const semR=paResultados.filter(r=>r.status==='sem');
+  const hSem=['Período','NF-e','Série','Chave','UF','CNPJ Emitente','Emitente','CRT','Regime',
+    'Item','Cód.Produto','Descrição','NCM','CEST','CFOP',
+    'Vl.Produto','IPI Item','Frete Rat.','Seguro Rat.','Outros Rat.','Base Pré-MVA',
+    'ALQ Inter','ALQ Intra','MVA Correta','BC-ST Calculada','ICMS Próprio','ICMS-ST Devido',
+    'Match CEST','Match NCM'];
+  const dSem=semR.map(r=>[
+    r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT,r.regime,
+    r.nitem,r.cProd,r.xProd,r.NCM,r.CEST,r.CFOP,
+    r2(r.vProd),r2(r.ipiItem),r2(r.freteRat),r2(r.seguroRat),r2(r.outrosRat),r2(r.basePreMVA),
+    r2(r.aliqInter),r2(r.aliqIntra),r2(r.mvaCorreta),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
+    r.matchCEST?'Sim':'Não',r.matchNCM?'Sim':'Não'
   ]);
-  const wsNFe=XLSX.utils.aoa_to_sheet([headNFe,...dataNFe]);
-  wsNFe['!cols']=headNFe.map((_,i)=>({wch:i===3?46:i===6?35:16}));
-  XLSX.utils.book_append_sheet(wb,wsNFe,'NF-e ICMS-ST');
+  const wsSem=XLSX.utils.aoa_to_sheet([hSem,...dSem]);
+  wsSem['!cols']=hSem.map(function(_,i){return{wch:i===3?46:i===11?35:i===6?30:16};});
+  XLSX.utils.book_append_sheet(wb,wsSem,'Sem Retenção ST');
 
-  // Aba 2: Itens detalhados
-  const headItens=['Período','NF-e','UF','Emitente','Regime','Item','Cód. Produto','Descrição','NCM','CEST','CFOP','Qtde','Vl. Unit.','Vl. Produto','ICMS','ICMS-ST (NF)'];
-  const dataItens=[];
-  paResultados.forEach(r=>{
-    r.itensDetalhados.forEach(item=>{
-      dataItens.push([
-        r.data,r.numero,r.ufEmit,r.emitNome,r.regime,
-        item.nitem,item.cProd,item.xProd,item.NCM,item.CEST,item.CFOP,
-        fmt2(item.qCom),fmt2(item.vUnCom),fmt2(item.vProd),fmt2(item.icms),fmt2(item.icmsST)
-      ]);
-    });
-  });
-  const wsItens=XLSX.utils.aoa_to_sheet([headItens,...dataItens]);
-  wsItens['!cols']=headItens.map((_,i)=>({wch:i===7?40:i===3?30:16}));
-  XLSX.utils.book_append_sheet(wb,wsItens,'Itens ST');
+  // Aba 2: Verificação ST
+  const comR=paResultados.filter(r=>r.status!=='sem');
+  const hVerif=['Período','NF-e','Chave','UF','Emitente','Regime','Status',
+    'Item','Descrição','NCM','CEST',
+    'Vl.Produto','BC-ST Declarada','ST Declarado',
+    'MVA Usada','MVA Correta',
+    'BC-ST Correta','ST Correto','Diferença'];
+  const dVerif=comR.map(r=>[
+    r.data,r.numero,r.chave,r.ufEmit,r.emitNome,r.regime,
+    r.status==='ok'?'OK':'DIVERGENTE',
+    r.nitem,r.xProd,r.NCM,r.CEST,
+    r2(r.vProd),r2(r.bcSTDeclarado),r2(r.stDeclarado),
+    r.mvaUsada!==null?r2(r.mvaUsada):'',r2(r.mvaCorreta),
+    r2(r.bcSTCorreta),r2(r.icmsSTCorreto),r2(r.diferenca)
+  ]);
+  const wsVerif=XLSX.utils.aoa_to_sheet([hVerif,...dVerif]);
+  wsVerif['!cols']=hVerif.map(function(_,i){return{wch:i===2?46:i===8?35:i===4?30:16};});
+  XLSX.utils.book_append_sheet(wb,wsVerif,'Verificação ST');
 
-  // Aba 3: Resumo por UF e Período
+  // Aba 3: Resumo por UF/Ano
   const resumo=new Map();
   paResultados.forEach(r=>{
     const ano=r.data?(r.data.substring(0,4)):'????';
-    const key=`${r.ufEmit}|${ano}`;
-    if(!resumo.has(key)) resumo.set(key,{uf:r.ufEmit,ano,nfes:0,itens:0,vlProd:0,st:0});
+    const key=r.ufEmit+'|'+ano;
+    if(!resumo.has(key)) resumo.set(key,{uf:r.ufEmit,ano:ano,sem:0,diverg:0,ok:0,vlSem:0,vlDiverg:0,vlProd:0});
     const g=resumo.get(key);
-    g.nfes++;g.itens+=r.qtdItens;g.vlProd+=r.vlProdST;g.st+=r.icmsSTDevido;
+    g.vlProd+=r.vProd;
+    if(r.status==='sem'){g.sem++;g.vlSem+=r.icmsSTCorreto;}
+    else if(r.status==='diverg'){g.diverg++;g.vlDiverg+=r.diferenca;}
+    else g.ok++;
   });
-  const headRes=['UF','Ano','Qtd NF-e','Qtd Itens','Vl. Produtos','ICMS-ST Devido'];
-  const dataRes=[...resumo.values()].sort((a,b)=>a.uf.localeCompare(b.uf)||a.ano.localeCompare(b.ano))
-    .map(g=>[g.uf,g.ano,g.nfes,g.itens,fmt2(g.vlProd),fmt2(g.st)]);
-  const wsRes=XLSX.utils.aoa_to_sheet([headRes,...dataRes]);
-  wsRes['!cols']=[{wch:6},{wch:8},{wch:10},{wch:10},{wch:18},{wch:18}];
+  const hRes=['UF','Ano','Itens Sem ST','ST Devido (sem ret.)','Itens MVA Diverg.','Diferença MVA','Itens OK','Vl. Produtos'];
+  const dRes=[...resumo.values()].sort(function(a,b){return a.uf.localeCompare(b.uf)||a.ano.localeCompare(b.ano);})
+    .map(function(g){return[g.uf,g.ano,g.sem,r2(g.vlSem),g.diverg,r2(g.vlDiverg),g.ok,r2(g.vlProd)];});
+  const wsRes=XLSX.utils.aoa_to_sheet([hRes,...dRes]);
+  wsRes['!cols']=[{wch:6},{wch:8},{wch:14},{wch:18},{wch:16},{wch:16},{wch:10},{wch:16}];
   XLSX.utils.book_append_sheet(wb,wsRes,'Resumo UF-Ano');
 
   // Aba 4: Metodologia
   const metodo=[
-    ['METODOLOGIA DE CÁLCULO — PRÉ-AUDITORIA ICMS-ST AUTOPEÇAS'],
+    ['METODOLOGIA \u2014 PRÉ-AUDITORIA ICMS-ST AUTOPEÇAS'],
     [],
     ['BASE LEGAL',''],
-    ['Art. 510-B RICMS/MA','ICMS-ST = (BC-ST × ALQ intra MA) − ICMS operação própria do remetente.'],
-    ['Conv. ICMS 142/2018 — Cl. 13ª §1º','Remetente Simples Nacional: ICMS próprio fictício = Vl. operação × alíquota interestadual.'],
-    ['Conv. ICMS 142/2018 — Cl. 11ª §1º','Remetente Simples Nacional: MVA ORIGINAL (sem ajuste). Regime Normal: MVA AJUSTADA.'],
-    ['Anexo 4.41 RICMS/MA','MVA-ST original: 71,78% para autopeças.'],
+    ['Art. 510-B RICMS/MA','ICMS-ST = (BC-ST \u00d7 ALQ intra) \u2212 ICMS próprio.'],
+    ['Conv. 142/2018 Cl. 13\u00aa \u00a71\u00ba','SN: ICMS fictício = base \u00d7 ALQ interestadual.'],
+    ['Conv. 142/2018 Cl. 11\u00aa \u00a71\u00ba','SN: MVA ORIGINAL. RN: MVA AJUSTADA.'],
+    ['Anexo 4.41 RICMS/MA','MVA-ST original: 71,78%.'],
     [],
-    ['REGIME NORMAL (ICMS destacado ≠ 0)',''],
-    ['ICMS Próprio','Valor do ICMS destacado na NF-e, rateado proporcionalmente aos itens ST.'],
-    ['MVA Ajustada','[(1 + 0,7178) × (1 − ALQ_inter) / (1 − ALQ_intra)] − 1'],
-    ['BC-ST','Base Pré-MVA × (1 + MVA ajustada)'],
-    ['ICMS-ST Devido','(BC-ST × ALQ intra MA) − ICMS destacado proporcional'],
+    ['REGIME NORMAL',''],
+    ['MVA Ajustada','[(1+0,7178)\u00d7(1\u2212ALQ_i)/(1\u2212ALQ_m)]\u22121'],
+    ['BC-ST','Base Pré-MVA \u00d7 (1 + MVA ajustada)'],
+    ['ICMS-ST','(BC-ST \u00d7 ALQ intra) \u2212 ICMS destacado'],
     [],
-    ['SIMPLES NACIONAL (ICMS = 0 na NF)',''],
-    ['ICMS Próprio','FICTÍCIO = Base Pré-MVA × alíquota interestadual.'],
-    ['MVA Original','71,78% — sem ajuste (Cl. 11ª §1º Conv. 142/2018).'],
-    ['BC-ST','Base Pré-MVA × (1 + 0,7178)'],
-    ['ICMS-ST Devido','(BC-ST × ALQ intra MA) − ICMS próprio fictício'],
+    ['SIMPLES NACIONAL',''],
+    ['MVA Original','71,78% (sem ajuste)'],
+    ['ICMS Fictício','Base \u00d7 ALQ interestadual'],
+    ['ICMS-ST','(BC-ST \u00d7 ALQ intra) \u2212 ICMS fictício'],
     [],
-    ['ALÍQUOTAS INTERESTADUAIS — Res. Senado 22/89',''],
-    ['N/NE/CO → MA','7%'],
-    ['S/SE → MA','12%'],
+    ['ALQ INTERESTADUAIS',''],
+    ['N/NE/CO \u2192 MA','7%'],['S/SE \u2192 MA','12%'],
     [],
-    ['ALÍQUOTAS INTERNAS MA',''],
-    ['Até 31/03/2023','18% — Lei nº 10.329/2015'],
-    ['01/04/2023 a 18/02/2024','20% — Lei nº 11.867/2022'],
-    ['19/02/2024 a 22/02/2025','22% — Lei nº 12.120/2023'],
-    ['A partir de 23/02/2025','23% — Lei nº 12.426/2024'],
+    ['ALQ INTERNAS MA',''],
+    ['Até 31/03/2023','18%'],['01/04/2023 a 18/02/2024','20%'],
+    ['19/02/2024 a 22/02/2025','22%'],['A partir de 23/02/2025','23%'],
     [],
-    ['NOTA','Os valores são estimativas para pré-auditoria. O cálculo definitivo deve considerar cada item individualmente e a legislação específica vigente na data do fato gerador.'],
+    ['VERIFICAÇÃO MVA',''],
+    ['MVA Usada','(BC-ST Declarada / Base Pré-MVA) \u2212 1'],
+    ['Tolerância','R$ 0,50 para arredondamentos'],
+    ['Diferença','ST correto \u2212 ST declarado (positivo = a cobrar)'],
+    [],
+    ['NOTA','Valores estimados para pré-auditoria.'],
   ];
   const wsMet=XLSX.utils.aoa_to_sheet(metodo);
-  wsMet['!cols']=[{wch:35},{wch:75}];
+  wsMet['!cols']=[{wch:32},{wch:70}];
   XLSX.utils.book_append_sheet(wb,wsMet,'Metodologia');
 
-  XLSX.writeFile(wb,`pre_auditoria_icmsst_${new Date().toISOString().substring(0,10)}.xlsx`);
+  XLSX.writeFile(wb,'pre_auditoria_icmsst_'+new Date().toISOString().substring(0,10)+'.xlsx');
 }
 
 /* ══════════ EVENTOS ══════════ */

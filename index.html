@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -156,6 +157,55 @@ mark{background:#fff3b0;border-radius:2px;padding:0 1px}
 .drag-handle{color:#ccc;font-size:13px;cursor:grab;flex-shrink:0}
 .order-label{font-size:11px;color:#333;flex:1}
 .order-empty{font-size:11px;color:#bbb;text-align:center;padding:20px 0}
+
+/* ══════════ PRÉ-AUDITORIA ══════════ */
+.pa-section{display:none;margin-top:1.2rem;border:1.5px solid #1F3864;border-radius:12px;overflow:hidden;background:#fff}
+.pa-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:linear-gradient(135deg,#1F3864 0%,#2a4a7a 100%);cursor:pointer;user-select:none}
+.pa-header h2{font-size:14px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}
+.pa-header h2 span{font-size:16px}
+.pa-arrow{color:rgba(255,255,255,.7);font-size:11px;transition:transform .2s}
+.pa-arrow.open{transform:rotate(180deg)}
+.pa-body{display:none;padding:16px}
+.pa-body.open{display:block}
+.pa-module-select{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.pa-mod-btn{padding:7px 14px;border-radius:20px;border:1.5px solid #c8d4e8;background:#f8f9fc;font-size:12px;font-weight:600;cursor:pointer;color:#1F3864;transition:all .15s}
+.pa-mod-btn:hover{background:#e8f0fb;border-color:#1F3864}
+.pa-mod-btn.active{background:#1F3864;color:#fff;border-color:#1F3864}
+.pa-config{background:#f8f9fc;border:1px solid #e0e6f0;border-radius:10px;padding:14px;margin-bottom:14px}
+.pa-config-title{font-size:12px;font-weight:700;color:#1F3864;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.pa-config-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.pa-config-row:last-child{margin-bottom:0}
+.pa-config-label{font-size:12px;font-weight:600;color:#555;min-width:140px}
+.pa-config-value{font-size:12px;color:#333;font-weight:600;background:#e8f0fb;padding:3px 10px;border-radius:6px}
+.pa-config-hint{font-size:11px;color:#888;margin-top:6px;font-style:italic}
+.pa-uf-grid{display:flex;flex-wrap:wrap;gap:4px}
+.pa-uf-chip{padding:3px 8px;border-radius:8px;border:1px solid #c8d4e8;background:#fff;font-size:11px;font-weight:600;cursor:pointer;color:#555;transition:all .1s}
+.pa-uf-chip:hover{border-color:#1F3864}
+.pa-uf-chip.excluded{background:#fce7f3;border-color:#f9a8d4;color:#9d174d;text-decoration:line-through}
+.pa-run-btn{width:100%;padding:11px;background:linear-gradient(135deg,#1F3864 0%,#2a4a7a 100%);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:opacity .15s;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.pa-run-btn:hover{opacity:.9}
+.pa-run-btn:disabled{opacity:.4;cursor:not-allowed}
+.pa-summary{display:none;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+@media(max-width:600px){.pa-summary{grid-template-columns:repeat(2,1fr)}}
+.pa-sum-card{background:#f8f9fc;border:1px solid #e0e6f0;border-radius:8px;padding:10px 12px;text-align:center}
+.pa-sum-card.highlight{background:#fef3c7;border-color:#fde047}
+.pa-sum-n{font-size:20px;font-weight:700;color:#1F3864}
+.pa-sum-l{font-size:11px;color:#777;margin-top:2px}
+.pa-table-wrap{max-height:420px;overflow:auto;border:1px solid #e0e6f0;border-radius:8px;margin-bottom:12px}
+.pa-table{width:100%;border-collapse:collapse;font-size:11px}
+.pa-table thead{position:sticky;top:0;z-index:1}
+.pa-table th{background:#1F3864;color:#fff;padding:8px 10px;text-align:left;font-weight:600;white-space:nowrap;font-size:11px}
+.pa-table th.right,.pa-table td.right{text-align:right}
+.pa-table td{padding:6px 10px;border-bottom:1px solid #eef2f8;white-space:nowrap}
+.pa-table tr:hover td{background:#f0f4fb}
+.pa-table tr.sn td{background:#fefce8}
+.pa-table tfoot td{background:#f0f4fb;font-weight:700;border-top:2px solid #1F3864;position:sticky;bottom:0}
+.pa-regime-tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700}
+.pa-regime-tag.normal{background:#dbeafe;color:#1e40af}
+.pa-regime-tag.sn{background:#fef9c3;color:#854d0e}
+.pa-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pa-no-data{text-align:center;padding:30px 20px;color:#888;font-size:13px}
+.pa-detail-row{font-size:11px;color:#666;padding:4px 10px;background:#fafbfc;border-bottom:1px solid #f0f4fb}
 </style>
 </head>
 <body>
@@ -179,7 +229,7 @@ mark{background:#fff3b0;border-radius:2px;padding:0 1px}
   <div class="left-col">
     <header>
       <h1>📄 Extrator NF-e / Substituição Tributária</h1>
-      <p>Configure os campos ao lado, carregue XMLs ou ZIP e baixe o Excel consolidado.</p>
+      <p>Configure os campos ao lado, carregue XMLs ou ZIP, baixe o Excel consolidado e execute a pré-auditoria.</p>
     </header>
 
     <!-- FILTROS -->
@@ -246,11 +296,70 @@ mark{background:#fff3b0;border-radius:2px;padding:0 1px}
       <button class="btn btn-secondary" id="btn-limpar" style="display:none" onclick="limpar()">🔄 Limpar</button>
     </div>
 
+    <!-- PRÉ-AUDITORIA -->
+    <div class="pa-section" id="pa-section">
+      <div class="pa-header" onclick="togglePA()">
+        <h2><span>🔎</span> Pré-auditoria</h2>
+        <div class="pa-arrow" id="pa-arrow">▼</div>
+      </div>
+      <div class="pa-body" id="pa-body">
+        <div class="pa-module-select">
+          <button class="pa-mod-btn active" onclick="selectPAModule('autopecas',this)">🔧 Autopeças ICMS-ST</button>
+          <button class="pa-mod-btn" disabled title="Em breve" style="opacity:.4;cursor:not-allowed">🧪 Outros segmentos</button>
+        </div>
+
+        <div class="pa-config" id="pa-config-autopecas">
+          <div class="pa-config-title">⚙️ Configuração — Autopeças (Segmento 01)</div>
+          <div class="pa-config-row">
+            <span class="pa-config-label">MVA Original:</span>
+            <span class="pa-config-value">71,78%</span>
+          </div>
+          <div class="pa-config-row">
+            <span class="pa-config-label">Protocolos 41/08 + 97/10</span>
+          </div>
+          <div class="pa-config-row">
+            <span class="pa-config-label">ALQ interna MA:</span>
+            <span class="pa-config-value">18% → 20% → 22% → 23%</span>
+          </div>
+          <div class="pa-config-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+            <span class="pa-config-label">UFs com protocolo (excluir da análise):</span>
+            <div class="pa-uf-grid" id="pa-uf-excl"></div>
+            <div class="pa-config-hint">Clique na UF para excluí-la. UFs excluídas (com protocolo) não entram na análise — o remetente deveria ter retido.</div>
+          </div>
+          <div class="pa-config-row" style="flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px">
+            <span class="pa-config-label">Filtro CEST/NCM:</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="pa-filtro-cest" checked style="accent-color:#1F3864"> CEST 01.xxx (autopeças)</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="pa-filtro-todos-cest"> Todos os itens com CEST</label>
+            </div>
+          </div>
+        </div>
+
+        <button class="pa-run-btn" id="pa-run-btn" onclick="executarPreAuditoria()">
+          <span>▶</span> Executar Pré-auditoria
+        </button>
+
+        <div class="pa-summary" id="pa-summary">
+          <div class="pa-sum-card"><div class="pa-sum-n" id="pa-s-nfes">0</div><div class="pa-sum-l">NF-e</div></div>
+          <div class="pa-sum-card"><div class="pa-sum-n" id="pa-s-itens">0</div><div class="pa-sum-l">Itens ST</div></div>
+          <div class="pa-sum-card"><div class="pa-sum-n" id="pa-s-vlprod">0</div><div class="pa-sum-l">Vl. Produtos</div></div>
+          <div class="pa-sum-card highlight"><div class="pa-sum-n" id="pa-s-stdev">0</div><div class="pa-sum-l">ICMS-ST Devido</div></div>
+        </div>
+
+        <div id="pa-results"></div>
+
+        <div class="pa-actions" id="pa-actions" style="display:none">
+          <button class="btn btn-primary" onclick="exportarPA()">⬇ Exportar Pré-auditoria</button>
+          <button class="btn btn-secondary" onclick="limparPA()">🔄 Limpar Resultado</button>
+        </div>
+      </div>
+    </div>
+
     <div class="notice">
       <strong>Privacidade:</strong> tudo processado no navegador, nenhum dado enviado a servidores.<br>
       <strong>Dica:</strong> filtros e ordenação são opcionais — sem configuração, exporta tudo na ordem padrão.
     </div>
-    <footer>Extrator NF-e / ST v5.0 · Uso interno</footer>
+    <footer>Extrator NF-e / ST v6.0 · Pré-auditoria · Uso interno</footer>
   </div>
 
   <!-- COLUNA DIREITA — PAINEL DE CAMPOS -->
@@ -917,6 +1026,8 @@ function limpar(){
   document.getElementById('ppct').textContent='0%';
   document.getElementById('file-input').value='';
   document.getElementById('filter-counter').style.display='none';
+  document.getElementById('pa-section').style.display='none';
+  limparPA();
 }
 
 async function processarEntrada(files){
@@ -958,6 +1069,7 @@ async function processarEntrada(files){
     addLog(`─── Concluído: ${ok} nota(s) | ${todosItens.length} item(ns) | ${erros} erro(s)`,'inf');
     computeAlertas();
     atualizarContadorFiltro();
+    document.getElementById('pa-section').style.display='block';
   }
 }
 
@@ -977,6 +1089,351 @@ function exportar(){
   wsI['!cols']=cI.map(()=>({wch:20}));
   XLSX.utils.book_append_sheet(wb,wsI,'Itens');
   XLSX.writeFile(wb,`nfe_st_${new Date().toISOString().substring(0,10)}.xlsx`);
+}
+
+/* ══════════ PRÉ-AUDITORIA ══════════ */
+let paResultados=[];
+const PA_MVA_ORIG=0.7178;
+const PA_UF_EXCL=new Set();
+
+// Regiões para alíquota interestadual (Res. Senado 22/89)
+const UF_SUL_SUDESTE=new Set(['ES','MG','RJ','SP','PR','RS','SC']);
+
+function getAliqInter(ufEmit){
+  return UF_SUL_SUDESTE.has(ufEmit)?0.12:0.07;
+}
+
+function getAliqIntraMA(dataStr){
+  if(!dataStr) return 0.23;
+  const d=dataStr.replace(/\//g,'-');
+  if(d<'2023-04-01') return 0.18;
+  if(d<'2024-02-19') return 0.20;
+  if(d<'2025-02-23') return 0.22;
+  return 0.23;
+}
+
+function getAliqIntraLabel(aliq){
+  return (aliq*100).toFixed(0)+'%';
+}
+
+function getMVAAjustada(aliqInter,aliqIntra){
+  return ((1+PA_MVA_ORIG)*(1-aliqInter)/(1-aliqIntra))-1;
+}
+
+function isCESTAutopecas(cest){
+  if(!cest) return false;
+  const c=cest.replace(/\./g,'');
+  return c.startsWith('01');
+}
+
+function togglePA(){
+  document.getElementById('pa-body').classList.toggle('open');
+  document.getElementById('pa-arrow').classList.toggle('open');
+}
+
+function selectPAModule(mod,el){
+  document.querySelectorAll('.pa-mod-btn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function initPAUFPicker(){
+  const grid=document.getElementById('pa-uf-excl');
+  if(!grid) return;
+  grid.innerHTML='';
+  UFS.filter(u=>u!=='MA').forEach(uf=>{
+    const chip=document.createElement('button');
+    chip.className='pa-uf-chip';
+    chip.textContent=uf;
+    chip.onclick=()=>{
+      chip.classList.toggle('excluded');
+      if(chip.classList.contains('excluded')) PA_UF_EXCL.add(uf);
+      else PA_UF_EXCL.delete(uf);
+    };
+    grid.appendChild(chip);
+  });
+}
+initPAUFPicker();
+
+function executarPreAuditoria(){
+  if(!todasNotas.length){alert('Carregue arquivos XML primeiro.');return;}
+
+  const filtroCEST01=document.getElementById('pa-filtro-cest').checked;
+  const filtroTodosCEST=document.getElementById('pa-filtro-todos-cest').checked;
+
+  // Mapa de notas por chave
+  const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
+
+  // Filtrar itens qualificados
+  const itensQualif=todosItens.filter(item=>{
+    const nota=notaMap.get(item.chave);
+    if(!nota) return false;
+    // UF emitente ≠ MA
+    if(nota.ufEmissao==='MA') return false;
+    // UF não excluída (com protocolo)
+    if(PA_UF_EXCL.has(nota.ufEmissao)) return false;
+    // ICMS-ST zerado no item
+    if(item.icmsST && item.icmsST>0) return false;
+    // Filtro CEST
+    if(filtroCEST01 && !filtroTodosCEST){
+      if(!isCESTAutopecas(item.CEST)) return false;
+    } else if(filtroTodosCEST){
+      if(!item.CEST || item.CEST.trim()==='') return false;
+    } else {
+      if(!isCESTAutopecas(item.CEST)) return false;
+    }
+    return true;
+  });
+
+  if(!itensQualif.length){
+    document.getElementById('pa-summary').style.display='none';
+    document.getElementById('pa-actions').style.display='none';
+    document.getElementById('pa-results').innerHTML='<div class="pa-no-data">Nenhum item encontrado com os filtros configurados.</div>';
+    paResultados=[];
+    return;
+  }
+
+  // Agrupar por NF-e (chave)
+  const grupos=new Map();
+  itensQualif.forEach(item=>{
+    if(!grupos.has(item.chave)) grupos.set(item.chave,{itens:[],nota:notaMap.get(item.chave)});
+    grupos.get(item.chave).itens.push(item);
+  });
+
+  paResultados=[];
+  let totalSTDevido=0, totalVlProd=0, totalItens=0;
+
+  grupos.forEach(({itens,nota},chave)=>{
+    // Somar valores dos itens qualificados
+    const vlProdST=itens.reduce((s,i)=>s+(i.vProd||0),0);
+    const vlIPIST=itens.reduce((s,i)=>s+(i.ipi||0),0);
+
+    // Ratear frete e outros da NF-e proporcionalmente aos itens ST
+    const vlProdTotal=nota.vNF?nota.vNF:todasNotas.find(n=>n.chave===chave)?.vNF||0;
+    const proporcao=vlProdTotal>0?(vlProdST/vlProdTotal):1;
+    const freteRateado=(nota.vFrete||0)*proporcao;
+    const outrosRateado=(nota.vOutro||0)*proporcao;
+
+    // Base pré-MVA
+    const basePreMVA=vlProdST+freteRateado+vlIPIST+outrosRateado;
+
+    // Determinar regime
+    const crt=nota.emitCRT||'';
+    const isSimples=crt.includes('Simples Nacional')||crt==='1'||(nota.vICMS===0 && nota.vBC===0);
+
+    // Alíquotas
+    const aliqInter=getAliqInter(nota.ufEmissao);
+    const aliqIntra=getAliqIntraMA(nota.data);
+
+    let mva, bcST, icmsProprioDeducao, icmsSTDevido;
+
+    if(isSimples){
+      // Simples Nacional: MVA original, ICMS fictício
+      mva=PA_MVA_ORIG;
+      bcST=basePreMVA*(1+mva);
+      icmsProprioDeducao=basePreMVA*aliqInter; // fictício
+      icmsSTDevido=(bcST*aliqIntra)-icmsProprioDeducao;
+    } else {
+      // Regime Normal: MVA ajustada, ICMS destacado
+      mva=getMVAAjustada(aliqInter,aliqIntra);
+      bcST=basePreMVA*(1+mva);
+      // ICMS próprio = valor do ICMS destacado na NF-e, proporcional aos itens ST
+      const icmsDestacadoTotal=nota.vICMS||0;
+      icmsProprioDeducao=icmsDestacadoTotal*proporcao;
+      icmsSTDevido=(bcST*aliqIntra)-icmsProprioDeducao;
+    }
+
+    if(icmsSTDevido<0) icmsSTDevido=0;
+
+    const resultado={
+      chave, numero:nota.numero, serie:nota.serie, data:nota.data,
+      ufEmit:nota.ufEmissao, emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ,
+      emitCRT:crt,
+      qtdItens:itens.length,
+      cests:[...new Set(itens.map(i=>i.CEST).filter(Boolean))].join(', '),
+      vlProdST, freteRateado, vlIPIST, outrosRateado,
+      basePreMVA,
+      regime:isSimples?'SN':'Normal',
+      aliqInter, aliqIntra,
+      mva, bcST,
+      icmsProprioDeducao,
+      icmsSTDevido,
+      itensDetalhados:itens,
+    };
+
+    paResultados.push(resultado);
+    totalSTDevido+=icmsSTDevido;
+    totalVlProd+=vlProdST;
+    totalItens+=itens.length;
+  });
+
+  // Ordenar por data
+  paResultados.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+
+  // Atualizar resumo
+  const fmt=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('pa-s-nfes').textContent=paResultados.length;
+  document.getElementById('pa-s-itens').textContent=totalItens;
+  document.getElementById('pa-s-vlprod').textContent='R$ '+fmt(totalVlProd);
+  document.getElementById('pa-s-stdev').textContent='R$ '+fmt(totalSTDevido);
+  document.getElementById('pa-summary').style.display='grid';
+  document.getElementById('pa-actions').style.display='flex';
+
+  // Renderizar tabela
+  renderPATable();
+}
+
+function renderPATable(){
+  const fmt=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct=v=>(v*100).toFixed(2)+'%';
+  const container=document.getElementById('pa-results');
+
+  let totProd=0,totBase=0,totBC=0,totICMSProp=0,totST=0;
+  paResultados.forEach(r=>{totProd+=r.vlProdST;totBase+=r.basePreMVA;totBC+=r.bcST;totICMSProp+=r.icmsProprioDeducao;totST+=r.icmsSTDevido;});
+
+  let html=`<div class="pa-table-wrap"><table class="pa-table">
+    <thead><tr>
+      <th>Período</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Regime</th>
+      <th>Itens</th>
+      <th class="right">Vl. Prod ST</th>
+      <th class="right">Base Pré-MVA</th>
+      <th>ALQ Inter</th><th>ALQ Intra</th><th>MVA</th>
+      <th class="right">BC-ST</th>
+      <th class="right">ICMS Próprio</th>
+      <th class="right" style="background:#2a4a7a">ICMS-ST Devido</th>
+    </tr></thead><tbody>`;
+
+  paResultados.forEach(r=>{
+    const cls=r.regime==='SN'?'sn':'';
+    const regTag=r.regime==='SN'?'<span class="pa-regime-tag sn">SN</span>':'<span class="pa-regime-tag normal">Normal</span>';
+    html+=`<tr class="${cls}">
+      <td>${r.data||''}</td>
+      <td>${r.numero||''}</td>
+      <td><strong>${r.ufEmit}</strong></td>
+      <td title="${r.emitCNPJ}">${(r.emitNome||'').substring(0,30)}</td>
+      <td>${regTag}</td>
+      <td style="text-align:center">${r.qtdItens}</td>
+      <td class="right">${fmt(r.vlProdST)}</td>
+      <td class="right">${fmt(r.basePreMVA)}</td>
+      <td style="text-align:center">${pct(r.aliqInter)}</td>
+      <td style="text-align:center">${pct(r.aliqIntra)}</td>
+      <td style="text-align:center">${pct(r.mva)}</td>
+      <td class="right">${fmt(r.bcST)}</td>
+      <td class="right">${fmt(r.icmsProprioDeducao)}</td>
+      <td class="right" style="font-weight:700;color:#1F3864">${fmt(r.icmsSTDevido)}</td>
+    </tr>`;
+  });
+
+  html+=`</tbody><tfoot><tr>
+    <td colspan="6" style="text-align:right">TOTAIS →</td>
+    <td class="right">${fmt(totProd)}</td>
+    <td class="right">${fmt(totBase)}</td>
+    <td colspan="3"></td>
+    <td class="right">${fmt(totBC)}</td>
+    <td class="right">${fmt(totICMSProp)}</td>
+    <td class="right" style="color:#1F3864;font-size:13px">${fmt(totST)}</td>
+  </tr></tfoot></table></div>`;
+
+  container.innerHTML=html;
+}
+
+function limparPA(){
+  paResultados=[];
+  document.getElementById('pa-summary').style.display='none';
+  document.getElementById('pa-actions').style.display='none';
+  document.getElementById('pa-results').innerHTML='';
+}
+
+function exportarPA(){
+  if(!paResultados.length){alert('Execute a pré-auditoria primeiro.');return;}
+  const wb=XLSX.utils.book_new();
+  const fmt2=v=>typeof v==='number'?Math.round(v*100)/100:v;
+
+  // Aba 1: NF-e com cálculo ST
+  const headNFe=['Período','NF-e','Série','Chave de Acesso','UF Emitente','CNPJ Emitente','Emitente','CRT',
+    'Regime','Qtd Itens ST','CESTs','Vl. Produtos ST','Frete Rateado','IPI Rateado','Outros Rateado',
+    'Base Pré-MVA','ALQ Interestadual','ALQ Interna MA','MVA','BC-ST','ICMS Próprio (dedução)','ICMS-ST Devido'];
+  const dataNFe=paResultados.map(r=>[
+    r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT,
+    r.regime,r.qtdItens,r.cests,
+    fmt2(r.vlProdST),fmt2(r.freteRateado),fmt2(r.vlIPIST),fmt2(r.outrosRateado),
+    fmt2(r.basePreMVA),fmt2(r.aliqInter),fmt2(r.aliqIntra),fmt2(r.mva),
+    fmt2(r.bcST),fmt2(r.icmsProprioDeducao),fmt2(r.icmsSTDevido)
+  ]);
+  const wsNFe=XLSX.utils.aoa_to_sheet([headNFe,...dataNFe]);
+  wsNFe['!cols']=headNFe.map((_,i)=>({wch:i===3?46:i===6?35:16}));
+  XLSX.utils.book_append_sheet(wb,wsNFe,'NF-e ICMS-ST');
+
+  // Aba 2: Itens detalhados
+  const headItens=['Período','NF-e','UF','Emitente','Regime','Item','Cód. Produto','Descrição','NCM','CEST','CFOP','Qtde','Vl. Unit.','Vl. Produto','ICMS','ICMS-ST (NF)'];
+  const dataItens=[];
+  paResultados.forEach(r=>{
+    r.itensDetalhados.forEach(item=>{
+      dataItens.push([
+        r.data,r.numero,r.ufEmit,r.emitNome,r.regime,
+        item.nitem,item.cProd,item.xProd,item.NCM,item.CEST,item.CFOP,
+        fmt2(item.qCom),fmt2(item.vUnCom),fmt2(item.vProd),fmt2(item.icms),fmt2(item.icmsST)
+      ]);
+    });
+  });
+  const wsItens=XLSX.utils.aoa_to_sheet([headItens,...dataItens]);
+  wsItens['!cols']=headItens.map((_,i)=>({wch:i===7?40:i===3?30:16}));
+  XLSX.utils.book_append_sheet(wb,wsItens,'Itens ST');
+
+  // Aba 3: Resumo por UF e Período
+  const resumo=new Map();
+  paResultados.forEach(r=>{
+    const ano=r.data?(r.data.substring(0,4)):'????';
+    const key=`${r.ufEmit}|${ano}`;
+    if(!resumo.has(key)) resumo.set(key,{uf:r.ufEmit,ano,nfes:0,itens:0,vlProd:0,st:0});
+    const g=resumo.get(key);
+    g.nfes++;g.itens+=r.qtdItens;g.vlProd+=r.vlProdST;g.st+=r.icmsSTDevido;
+  });
+  const headRes=['UF','Ano','Qtd NF-e','Qtd Itens','Vl. Produtos','ICMS-ST Devido'];
+  const dataRes=[...resumo.values()].sort((a,b)=>a.uf.localeCompare(b.uf)||a.ano.localeCompare(b.ano))
+    .map(g=>[g.uf,g.ano,g.nfes,g.itens,fmt2(g.vlProd),fmt2(g.st)]);
+  const wsRes=XLSX.utils.aoa_to_sheet([headRes,...dataRes]);
+  wsRes['!cols']=[{wch:6},{wch:8},{wch:10},{wch:10},{wch:18},{wch:18}];
+  XLSX.utils.book_append_sheet(wb,wsRes,'Resumo UF-Ano');
+
+  // Aba 4: Metodologia
+  const metodo=[
+    ['METODOLOGIA DE CÁLCULO — PRÉ-AUDITORIA ICMS-ST AUTOPEÇAS'],
+    [],
+    ['BASE LEGAL',''],
+    ['Art. 510-B RICMS/MA','ICMS-ST = (BC-ST × ALQ intra MA) − ICMS operação própria do remetente.'],
+    ['Conv. ICMS 142/2018 — Cl. 13ª §1º','Remetente Simples Nacional: ICMS próprio fictício = Vl. operação × alíquota interestadual.'],
+    ['Conv. ICMS 142/2018 — Cl. 11ª §1º','Remetente Simples Nacional: MVA ORIGINAL (sem ajuste). Regime Normal: MVA AJUSTADA.'],
+    ['Anexo 4.41 RICMS/MA','MVA-ST original: 71,78% para autopeças.'],
+    [],
+    ['REGIME NORMAL (ICMS destacado ≠ 0)',''],
+    ['ICMS Próprio','Valor do ICMS destacado na NF-e, rateado proporcionalmente aos itens ST.'],
+    ['MVA Ajustada','[(1 + 0,7178) × (1 − ALQ_inter) / (1 − ALQ_intra)] − 1'],
+    ['BC-ST','Base Pré-MVA × (1 + MVA ajustada)'],
+    ['ICMS-ST Devido','(BC-ST × ALQ intra MA) − ICMS destacado proporcional'],
+    [],
+    ['SIMPLES NACIONAL (ICMS = 0 na NF)',''],
+    ['ICMS Próprio','FICTÍCIO = Base Pré-MVA × alíquota interestadual.'],
+    ['MVA Original','71,78% — sem ajuste (Cl. 11ª §1º Conv. 142/2018).'],
+    ['BC-ST','Base Pré-MVA × (1 + 0,7178)'],
+    ['ICMS-ST Devido','(BC-ST × ALQ intra MA) − ICMS próprio fictício'],
+    [],
+    ['ALÍQUOTAS INTERESTADUAIS — Res. Senado 22/89',''],
+    ['N/NE/CO → MA','7%'],
+    ['S/SE → MA','12%'],
+    [],
+    ['ALÍQUOTAS INTERNAS MA',''],
+    ['Até 31/03/2023','18% — Lei nº 10.329/2015'],
+    ['01/04/2023 a 18/02/2024','20% — Lei nº 11.867/2022'],
+    ['19/02/2024 a 22/02/2025','22% — Lei nº 12.120/2023'],
+    ['A partir de 23/02/2025','23% — Lei nº 12.426/2024'],
+    [],
+    ['NOTA','Os valores são estimativas para pré-auditoria. O cálculo definitivo deve considerar cada item individualmente e a legislação específica vigente na data do fato gerador.'],
+  ];
+  const wsMet=XLSX.utils.aoa_to_sheet(metodo);
+  wsMet['!cols']=[{wch:35},{wch:75}];
+  XLSX.utils.book_append_sheet(wb,wsMet,'Metodologia');
+
+  XLSX.writeFile(wb,`pre_auditoria_icmsst_${new Date().toISOString().substring(0,10)}.xlsx`);
 }
 
 /* ══════════ EVENTOS ══════════ */

@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Extrator NF-e / ST</title>
+<title>Radar ST</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -277,7 +277,8 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 </style></head><body>
 
 <div id="login-screen"><div class="login-card">
-<h1>⚡ Extrator NF-e / ST</h1><p>Digite a senha para acessar</p>
+<div style="font-size:48px;margin-bottom:8px">🎯</div>
+<h1 style="margin:0 0 4px">Radar ST</h1><p style="margin:0 0 20px;color:var(--text-3);font-size:13px">Monitoramento de conformidade ICMS-ST</p>
 <input type="password" id="pwd-input" placeholder="Senha" onkeydown="if(event.key==='Enter')tentarLogin()">
 <button onclick="tentarLogin()">Entrar</button>
 <div class="login-error" id="login-error">Senha incorreta.</div>
@@ -285,7 +286,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 
 <div id="app">
 <header>
-<div class="logo"><div class="logo-mark">⚡</div>Extrator NF-e <span style="opacity:.5;font-weight:500">/ ST</span></div>
+<div class="logo"><div class="logo-mark">🎯</div>Radar ST <span style="opacity:.4;font-weight:400;font-size:13px;margin-left:4px">Monitoramento ICMS-ST</span></div>
 <div class="kpis">
 <div class="kpi">📄 <b id="kpi-notas">0</b> notas</div>
 <div class="kpi">📦 <b id="kpi-itens">0</b> itens</div>
@@ -357,7 +358,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div id="mon-results"></div></section>
 </main>
 </div>
-<footer class="app-footer">Extrator NF-e / ST · v3.0 · Atualizado em Abril/2026</footer>
+<footer class="app-footer">Radar ST · v3.0 · Atualizado em Abril/2026</footer>
 </div>
 
 <script>

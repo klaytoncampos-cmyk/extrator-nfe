@@ -1639,15 +1639,15 @@ function executarPreAuditoriaVeiculos(){
           }
         }
 
-        // ST esperado: (vBCST × alíquota interna) − ICMS próprio
-        // O Dec. 20.498/04 aplica a alíquota interna cheia sobre a base reduzida (não 12% fixo)
-        if(bcST>0){
-          stCalculado=(bcST*aliqMA)-icmsDecl;
+        // ST esperado: (PMCF × 12% carga efetiva Dec. 20.498/04) − ICMS próprio
+        // Funciona independente de como o emitente estruturou (com/sem pRedBCST)
+        if(pmcf>0){
+          stCalculado=(pmcf*0.12)-icmsDecl;
           if(stCalculado<0) stCalculado=0;
           divergenciaST=stCalculado-stDeclarado;
           if(Math.abs(divergenciaST)>0.50 && stCalculado!==stDeclarado){
             const sinal=divergenciaST>0?'+':'';
-            vulnerabilidades.push('ICMS-ST divergente — declarado R$'+stDeclarado.toLocaleString('pt-BR',{minimumFractionDigits:2})+', esperado R$'+stCalculado.toLocaleString('pt-BR',{minimumFractionDigits:2})+' (diferença: '+sinal+divergenciaST.toLocaleString('pt-BR',{minimumFractionDigits:2})+')');
+            vulnerabilidades.push('ICMS-ST divergente — declarado R$'+stDeclarado.toLocaleString('pt-BR',{minimumFractionDigits:2})+', esperado R$'+stCalculado.toLocaleString('pt-BR',{minimumFractionDigits:2})+' (carga 12% sobre PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+', diferença: '+sinal+divergenciaST.toLocaleString('pt-BR',{minimumFractionDigits:2})+')');
           }
         }
 
@@ -1850,151 +1850,7 @@ function executarPreAuditoriaVeiculos(){
   // Ordenar: irregulares primeiro, depois por data
   const ordemSt={Irregular:0,Regular:1};
   paVeicResultados.sort((a,b)=>(ordemSt[a.statusItem]||0)-(ordemSt[b.statusItem]||0)||(a.data||'').localeCompare(b.data||''));
-
-  // Contadores
-  const irregulares=paVeicResultados.filter(r=>r.statusItem==='Irregular');
-  const regulares=paVeicResultados.filter(r=>r.statusItem==='Regular');
-  const comFumacop=paVeicResultados.filter(r=>r.fumacopAplicavel);
-  const fumacopOmisso=paVeicResultados.filter(r=>r.fumacopAplicavel&&r.vFCPSTDecl===0);
-
-  const totalSTDecl=paVeicResultados.reduce((s,r)=>s+r.stDeclarado,0);
-  const totalSTCalc=paVeicResultados.reduce((s,r)=>s+(r.stCalculado!==null?r.stCalculado:r.stDeclarado),0);
-  const totalDivST=totalSTCalc-totalSTDecl;
-  const totalFumacopDecl=paVeicResultados.reduce((s,r)=>s+r.vFCPSTDecl,0);
-  const totalFumacopEsp=paVeicResultados.reduce((s,r)=>s+r.vfcpstEsperado,0);
-  const totalDivFumacop=totalFumacopEsp-totalFumacopDecl;
-  const totalACobrar=(totalDivST>0?totalDivST:0)+(totalDivFumacop>0?totalDivFumacop:0);
-
-  const fmt=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-
-  // Rebuild summary cards para veículos
-  const sumDiv=document.getElementById('pa-summary');
-  if(sumDiv)sumDiv.innerHTML=`
-    <div class="pa-sum-card"><div class="pa-sum-n" style="color:#1F3864">${paVeicResultados.length}</div><div class="pa-sum-l">Itens analisados</div></div>
-    <div class="pa-sum-card" style="border-left:3px solid #ef4444"><div class="pa-sum-n" style="color:#b91c1c">${irregulares.length}</div><div class="pa-sum-l">Irregulares</div></div>
-    <div class="pa-sum-card" style="border-left:3px solid #22c55e"><div class="pa-sum-n" style="color:#166534">${regulares.length}</div><div class="pa-sum-l">Regulares ✓</div></div>
-    <div class="pa-sum-card" style="border-left:3px solid #8b5cf6"><div class="pa-sum-n" style="color:#6d28d9">${comFumacop.length}</div><div class="pa-sum-l">FUMACOP aplicável</div></div>
-    <div class="pa-sum-card" style="grid-column:1/-1;border-left:3px solid #f59e0b"><div class="pa-sum-n" style="font-size:17px;color:#92400e">ST Declarado: R$ ${fmt(totalSTDecl)} · ST Esperado: R$ ${fmt(totalSTCalc)} · <span style="color:#b91c1c">Divergência ST: R$ ${fmt(totalDivST)}</span></div><div class="pa-sum-l">FUMACOP Decl: R$ ${fmt(totalFumacopDecl)} · FUMACOP Esp: R$ ${fmt(totalFumacopEsp)} · Diverg. FUMACOP: R$ ${fmt(totalDivFumacop)} ${fumacopOmisso.length>0?' · ⚠️ '+fumacopOmisso.length+' omissão(ões)':''}</div></div>
-    <div class="pa-sum-card highlight" style="grid-column:1/-1"><div class="pa-sum-n" style="font-size:22px;color:#b91c1c">R$ ${fmt(totalACobrar)}</div><div class="pa-sum-l">Total a cobrar (divergência ST positiva + divergência FUMACOP positiva)</div></div>
-  `;
-  if(sumDiv)sumDiv.style.display='grid';
-
-  // Tab bar
-  const nIrreg=irregulares.length, nReg=regulares.length;
-  const tabBar=document.getElementById('pa-tab-bar');
-  if(tabBar)tabBar.style.display='block';
-  if(tabBar)tabBar.innerHTML=`<div style="display:flex;border-bottom:2px solid #e0e6f0">
-    <button class="pa-tab-btn active" onclick="switchPAVeicTab('irregulares',this)" style="flex:1;padding:9px;font-size:12px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:2px solid #1F3864;color:#1F3864;margin-bottom:-2px">⚠️ Irregulares (${nIrreg})</button>
-    <button class="pa-tab-btn" onclick="switchPAVeicTab('regulares',this)" style="flex:1;padding:9px;font-size:12px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:#888;margin-bottom:-2px">✅ Regulares (${nReg})</button>
-    <button class="pa-tab-btn" onclick="switchPAVeicTab('todos',this)" style="flex:1;padding:9px;font-size:12px;font-weight:700;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;color:#888;margin-bottom:-2px">📋 Todos (${paVeicResultados.length})</button>
-  </div>`;
-
-  {const _e=document.getElementById('pa-actions');if(_e)_e.style.display='flex';}
-  paVeicTabAtual='irregulares';
-  renderPAVeicTable();
-}
-
-function switchPAVeicTab(tab,el){
-  paVeicTabAtual=tab;
-  document.querySelectorAll('.pa-tab-btn').forEach(b=>{b.classList.remove('active');b.style.borderBottom='2px solid transparent';b.style.color='#888';});
-  el.classList.add('active');el.style.borderBottom='2px solid #1F3864';el.style.color='#1F3864';
-  renderPAVeicTable();
-}
-
-function renderPAVeicTable(){
-  const fmt=v=>v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const container=document.getElementById('pa-results');
-
-  let dados;
-  if(paVeicTabAtual==='irregulares') dados=paVeicResultados.filter(r=>r.statusItem==='Irregular');
-  else if(paVeicTabAtual==='regulares') dados=paVeicResultados.filter(r=>r.statusItem==='Regular');
-  else dados=[...paVeicResultados];
-
-  if(!dados.length){
-    container.innerHTML='<div class="pa-no-data">Nenhum item '+(paVeicTabAtual==='irregulares'?'irregular':'regular')+' encontrado.</div>';
-    return;
-  }
-
-  let html='<div class="pa-table-wrap"><table class="pa-table"><thead><tr>';
-  html+='<th>Status</th><th>Convênio</th><th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th>';
-  html+='<th>Item</th><th>Descrição</th><th>CEST</th><th>CST</th>';
-  html+='<th class="right">Vl. Prod</th>';
-  html+='<th class="right">BC-ST (PMCF)</th><th>Carga Ef.</th>';
-  html+='<th class="right">ST Decl.</th><th class="right">ST Esperado</th><th class="right">Diverg. ST</th>';
-  html+='<th>FUMACOP</th><th class="right">FCPST Decl.</th><th class="right">FCPST Esp.</th>';
-  html+='<th>Vulnerabilidades</th>';
-  html+='</tr></thead><tbody>';
-
-  let totSTDecl=0,totSTCalc=0,totDiv=0,totFumaDecl=0,totFumaEsp=0;
-  dados.forEach(r=>{
-    const statusTag=r.statusItem==='Regular'
-      ?'<span class="pa-status ok">✓ OK</span>'
-      :'<span class="pa-status sem">⚠ IRREG</span>';
-    const convTag='<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:#dbeafe;color:#1e40af;font-weight:600;white-space:nowrap">'+labelConvenio(r.convenio).split('(')[0].trim()+'</span>';
-    const fumaTag=r.fumacopAplicavel
-      ?(r.vFCPSTDecl>0?'<span style="color:#166534;font-weight:600">✓ Sim</span>':'<span style="color:#b91c1c;font-weight:700">✗ Omisso</span>')
-      :'<span style="color:#888">N/A</span>';
-
-    const vulnHtml=r.vulnerabilidades.length>0
-      ?'<ul style="margin:0;padding-left:12px;list-style:disc">'+r.vulnerabilidades.map(v=>'<li style="font-size:10px;color:#991b1b;line-height:1.4;margin-bottom:2px">'+v+'</li>').join('')+'</ul>'
-      :'<span style="color:#166534;font-size:10px">—</span>';
-
-    const stCalcStr=r.stCalculado!==null?fmt(r.stCalculado):'—';
-    const divClass=r.divergenciaST>0.50?'pa-diff-pos':r.divergenciaST<-0.50?'pa-diff-neg':'pa-diff-zero';
-    const divPrefix=r.divergenciaST>0?'+':'';
-    const divStr=r.stCalculado!==null?(divPrefix+fmt(r.divergenciaST)):'—';
-    const cargaStr=r.cargaEfetiva!==null?(r.cargaEfetiva.toFixed(2)+'%'):'—';
-    const cargaColor=r.cargaEfetiva!==null&&Math.abs(r.cargaEfetiva-12)>0.5?'color:#b91c1c;font-weight:700':'';
-
-    totSTDecl+=r.stDeclarado;
-    totSTCalc+=(r.stCalculado!==null?r.stCalculado:r.stDeclarado);
-    totDiv+=(r.stCalculado!==null?r.divergenciaST:0);
-    totFumaDecl+=r.vFCPSTDecl;
-    totFumaEsp+=r.vfcpstEsperado;
-
-    html+='<tr>';
-    html+='<td>'+statusTag+'</td>';
-    html+='<td>'+convTag+'</td>';
-    html+='<td>'+r.data+'</td>';
-    html+='<td>'+r.numero+'</td>';
-    html+='<td><strong>'+r.ufEmit+'</strong></td>';
-    html+='<td title="'+r.emitCNPJ+'">'+(r.emitNome||'').substring(0,22)+'</td>';
-    html+='<td style="text-align:center">'+r.nitem+'</td>';
-    html+='<td title="'+r.xProd+'">'+(r.xProd||'').substring(0,25)+'</td>';
-    html+='<td>'+(r.CEST||'—')+'</td>';
-    html+='<td style="text-align:center'+(r.cstDecl==='00'?';color:#b91c1c;font-weight:700':'')+'">'+r.cstDecl+'</td>';
-    html+='<td class="right">'+fmt(r.vProd)+'</td>';
-    html+='<td class="right">'+fmt(r.bcST)+'</td>';
-    html+='<td style="text-align:center;'+cargaColor+'">'+cargaStr+'</td>';
-    html+='<td class="right">'+fmt(r.stDeclarado)+'</td>';
-    html+='<td class="right">'+stCalcStr+'</td>';
-    html+='<td class="right '+divClass+'">'+divStr+'</td>';
-    html+='<td>'+fumaTag+'</td>';
-    html+='<td class="right">'+fmt(r.vFCPSTDecl)+'</td>';
-    html+='<td class="right">'+(r.fumacopAplicavel?fmt(r.vfcpstEsperado):'—')+'</td>';
-    html+='<td style="white-space:normal;min-width:200px;max-width:320px">'+vulnHtml+'</td>';
-    html+='</tr>';
-
-    if(r.alertaConv64){
-      html+='<tr><td colspan="20" style="background:#fef3c7;font-size:10px;color:#92400e;padding:4px 10px">⚠️ Alerta Conv. 64 — Operação com Produtor Rural. Verificação da regra dos 12 meses não realizada.</td></tr>';
-    }
-  });
-
-  // Totalizador
-  const totDivClass=totDiv>0.50?'pa-diff-pos':totDiv<-0.50?'pa-diff-neg':'pa-diff-zero';
-  html+='</tbody><tfoot><tr>';
-  html+='<td colspan="13" style="text-align:right">TOTAIS →</td>';
-  html+='<td class="right">'+fmt(totSTDecl)+'</td>';
-  html+='<td class="right">'+fmt(totSTCalc)+'</td>';
-  html+='<td class="right '+totDivClass+'" style="font-size:13px">'+(totDiv>0?'+':'')+fmt(totDiv)+'</td>';
-  html+='<td></td>';
-  html+='<td class="right">'+fmt(totFumaDecl)+'</td>';
-  html+='<td class="right">'+fmt(totFumaEsp)+'</td>';
-  html+='<td></td>';
-  html+='</tr></tfoot>';
-
-  html+='</tbody></table></div>';
-  if(container)container.innerHTML=html;
+  // Renderização é feita por renderMon() chamado pelo execMon()
 }
 
 /* --- EXPORTAR VEÍCULOS --- */
@@ -2709,7 +2565,12 @@ execMon=function(){
   document.getElementById('mon-welcome').style.display='none';
   showSkeleton('mon-results',4);
   setTimeout(()=>{
-    _origExecMon();
+    try{
+      _origExecMon();
+    }catch(e){
+      document.getElementById('mon-results').innerHTML='<div style="padding:20px;color:#b91c1c;background:#fee2e2;border-radius:8px;margin:12px 0"><b>Erro no monitoramento:</b><br><pre style="margin:8px 0;font-size:12px;white-space:pre-wrap">'+e.message+'\n'+e.stack+'</pre></div>';
+      console.error('Erro execMon:',e);
+    }
     const eb=document.getElementById('mon-export-btn');
     if(eb)eb.style.display='inline-block';
   },60);

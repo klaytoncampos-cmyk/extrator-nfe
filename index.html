@@ -1075,8 +1075,28 @@ function executarPreAuditoria(){
     const seguroRat=(nota.vSeg||0)*proporcao;
     const outrosRat=(nota.vOutro||0)*proporcao;
 
-    // Base pré-MVA = vProd + IPI + frete rateado + seguro rateado + outros rateados
-    const basePreMVA=(item.vProd||0)+(item.ipi||0)+freteRat+seguroRat+outrosRat;
+    // Conv. 06/09: detectar redução de BC para pneumáticos (CEST 16.xxx)
+    // Se pRedBC declarado bate com os percentuais do Conv. 06/09, usar fórmula do §3º
+    const cest16=(item.CEST||'').replace(/\./g,'').startsWith('16');
+    const pRedBCDecl=item.pRedBC||0;
+    let usaConv0609=false;
+    let conv0609Pct=0;
+    if(cest16 && pRedBCDecl>0){
+      // Percentuais Conv. 06/09 (alt. Conv. 21/13): 8.78% (S/SE→N/NE), 9.30% (demais), 8.50% (4%)
+      if(Math.abs(pRedBCDecl-8.78)<0.05||Math.abs(pRedBCDecl-9.30)<0.05||Math.abs(pRedBCDecl-8.50)<0.05){
+        usaConv0609=true;
+        conv0609Pct=pRedBCDecl;
+      }
+    }
+
+    // Base pré-MVA: se Conv. 06/09 detectado, usar BcR (base reduzida) + IPI + despesas (§3º)
+    let basePreMVA;
+    if(usaConv0609){
+      const bcReduzida=(item.vProd||0)*(1-conv0609Pct/100);
+      basePreMVA=bcReduzida+(item.ipi||0)+freteRat+seguroRat+outrosRat;
+    } else {
+      basePreMVA=(item.vProd||0)+(item.ipi||0)+freteRat+seguroRat+outrosRat;
+    }
 
     const mvaOrigItem=getMVAOriginal(item);
     const mvaCorreta=isSimples?mvaOrigItem:getMVAAjustada(aliqInter,aliqIntra,mvaOrigItem);
@@ -1119,6 +1139,7 @@ function executarPreAuditoria(){
       freteRat, seguroRat, outrosRat,
       icmsItem:item.icms||0,
       basePreMVA, regime:isSimples?'SN':'Normal',
+      conv0609:usaConv0609, conv0609Pct:conv0609Pct,
       aliqInter, aliqIntra,
       bcSTDeclarado, stDeclarado,
       mvaUsada,
@@ -1583,8 +1604,24 @@ function executarPreAuditoriaVeiculos(){
         const bcST=item.bcST||0;
         const icmsDecl=item.icms||0;
 
-        // Verificar pRedBCST (APENAS pRedBCST, nunca pRedBC do ICMS próprio)
+        // PMCF (base cheia antes da redução): usar vBCFCPST se disponível, senão reverter de bcST
         const pRedSTDecl=item.pRedBCST||0;
+        let pmcf=item.vBCFCPST||0;
+        if(pmcf===0 && pRedSTDecl>0 && bcST>0){
+          pmcf=bcST/(1-(pRedSTDecl/100));
+        }
+        if(pmcf===0) pmcf=bcST;
+
+        // Re-avaliar FUMACOP com PMCF real (não base reduzida)
+        if(pmcf>0 && pmcf!==bcST){
+          const cest=(item.CEST||'').replace(/\./g,'');
+          if(cest.startsWith('25') && pmcf>150000 && !fumacopAplicavel){
+            fumacopAplicavel=true;
+            fumacopInfo={aplicavel:true,motivo:'Veículo CEST 25 — PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (base cheia)'};
+          }
+        }
+
+        // Verificar pRedBCST
         if(pRedSTDecl>0){
           pRedBCDecl=pRedSTDecl;
           pRedBCEsperado=info.pRedBC;
@@ -1593,18 +1630,19 @@ function executarPreAuditoriaVeiculos(){
           }
         }
 
-        // SEMPRE verificar carga efetiva (vICMS + vICMSST) / vBCST = 12%
-        if(bcST>0){
-          const cargaEf=(icmsDecl+stDeclarado)/bcST;
+        // Carga efetiva: (ICMS + ST) / PMCF deve ser ≈ 12% (Dec. 20.498/04)
+        if(pmcf>0){
+          const cargaEf=(icmsDecl+stDeclarado)/pmcf;
           cargaEfetiva=cargaEf*100;
           if(Math.abs(cargaEf-0.12)>0.005){
-            vulnerabilidades.push('Carga efetiva ICMS divergente — calculada '+(cargaEf*100).toFixed(2)+'%, esperada 12% (Dec. 20.498/04). '+(cargaEf<0.12?'Carga a menor.':'Carga a maior.'));
+            vulnerabilidades.push('Carga efetiva ICMS divergente — calculada '+(cargaEf*100).toFixed(2)+'% sobre PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+', esperada 12% (Dec. 20.498/04). '+(cargaEf<0.12?'Carga a menor.':'Carga a maior.'));
           }
         }
 
-        // SEMPRE calcular ST esperado: (vBCST × 12%) − vICMS próprio
+        // ST esperado: (vBCST × alíquota interna) − ICMS próprio
+        // O Dec. 20.498/04 aplica a alíquota interna cheia sobre a base reduzida (não 12% fixo)
         if(bcST>0){
-          stCalculado=(bcST*0.12)-icmsDecl;
+          stCalculado=(bcST*aliqMA)-icmsDecl;
           if(stCalculado<0) stCalculado=0;
           divergenciaST=stCalculado-stDeclarado;
           if(Math.abs(divergenciaST)>0.50 && stCalculado!==stDeclarado){
@@ -1619,13 +1657,7 @@ function executarPreAuditoriaVeiculos(){
           const pFCPST=item.pFCPST||0;
           const vFCPST=item.vFCPST||0;
 
-          // Base cheia = PMCF. Se pRedBCST foi aplicado, reverter para achar a base cheia
-          let baseCheiaReal=bcST;
-          if(pRedSTDecl>0 && bcST>0){
-            baseCheiaReal=bcST/(1-(pRedSTDecl/100));
-          }
-
-          vfcpstEsperado=baseCheiaReal*0.02;
+          vfcpstEsperado=pmcf*0.02;
 
           if(vFCPST===0){
             vulnerabilidades.push('Omissão de Recolhimento FUMACOP-ST');

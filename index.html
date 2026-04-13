@@ -361,9 +361,11 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 </div>
 
 <script>
-const SENHA='st123';
-function tentarLogin(){
-  if(document.getElementById('pwd-input').value===SENHA){
+const SENHA_HASH='70c2dfd306a178692c9d61065e471f35368fe1a1ba48471f353b7082a79d76d9';
+async function sha256(msg){const enc=new TextEncoder().encode(msg);const buf=await crypto.subtle.digest('SHA-256',enc);return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+async function tentarLogin(){
+  const hash=await sha256(document.getElementById('pwd-input').value);
+  if(hash===SENHA_HASH){
     sessionStorage.setItem('nfe_auth','ok');
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='block';

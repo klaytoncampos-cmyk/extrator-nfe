@@ -724,7 +724,7 @@ function renderUploadSummary(){
   h+='<div class="us-section"><h3>🗺️ UFs Emitentes</h3><table class="us-mini-table"><thead><tr><th>UF</th><th>Notas</th><th class="right">Valor NF-e</th><th style="width:70px"></th></tr></thead><tbody>';
   ufArr.forEach(([uf,d])=>{
     const isSulSE=UF_SUL_SUDESTE.has(uf);
-    h+='<tr><td><b>'+uf+'</b>'+(isSulSE?' <span style="font-size:9px;color:var(--primary);font-weight:600">S/SE 12%</span>':' <span style="font-size:9px;color:var(--text-3)">7%</span>')+'</td><td>'+d.n+'</td><td class="right">R$ '+fmt(d.v)+'</td><td><div class="us-bar"><div class="us-bar-fill" style="width:'+Math.round((d.n/maxUfN)*100)+'%"></div></div></td></tr>';
+    h+='<tr><td><b>'+uf+'</b>'+(isSulSE?' <span style="font-size:9px;color:var(--primary);font-weight:600">S/SE 7%</span>':' <span style="font-size:9px;color:var(--text-3)">12%</span>')+'</td><td>'+d.n+'</td><td class="right">R$ '+fmt(d.v)+'</td><td><div class="us-bar"><div class="us-bar-fill" style="width:'+Math.round((d.n/maxUfN)*100)+'%"></div></div></td></tr>';
   });
   h+='</tbody></table></div>';
 
@@ -885,6 +885,32 @@ async function exportar(){
 let paResultados=[];
 let paTabAtual='sem';
 const PA_MVA_ORIG=0.7178;
+
+/* --- MVAs originais por segmento (Pneumáticos = CEST 16.xxx) --- */
+const MVA_PNEUMATICOS=[
+  {cest:'1600100',ncm:'40111000',mva:0.42},  // Pneus automóveis/caminhonetas
+  {cest:'1600200',ncm:'4011',mva:0.32},       // Pneus caminhões/ônibus/tratores
+  {cest:'1600300',ncm:'40114000',mva:0.60},   // Pneus motocicletas
+  {cest:'1600400',ncm:'4011',mva:0.45},       // Outros pneus
+  {cest:'1600700',ncm:'401290',mva:0.45},     // Protetores de borracha
+  {cest:'1600800',ncm:'4013',mva:0.45},       // Câmaras de ar
+];
+
+function getMVAOriginal(item){
+  const cest=(item.CEST||'').replace(/\./g,'');
+  const ncm=(item.NCM||'').replace(/\./g,'');
+  if(!cest.startsWith('16')) return PA_MVA_ORIG; // Não é pneumático → MVA padrão autopeças
+  // Buscar match exato por CEST primeiro
+  for(const p of MVA_PNEUMATICOS){
+    if(cest===p.cest) return p.mva;
+  }
+  // Fallback: match por prefixo NCM dentro do segmento 16
+  for(const p of MVA_PNEUMATICOS){
+    if(ncm.startsWith(p.ncm.replace(/\./g,''))) return p.mva;
+  }
+  return PA_MVA_ORIG; // CEST 16 não mapeado → padrão
+}
+
 const PA_UF_EXCL=new Set();
 
 // NCM autopeças — prefixos 4 dígitos (Conv. 142/18 Anexo II Segmento 01)
@@ -901,9 +927,9 @@ const NCM_AUTOPECAS=[
   '9026','9029','9031','9032','9104','9401','9613',
 ];
 
-const UF_SUL_SUDESTE=new Set(['ES','MG','RJ','SP','PR','RS','SC']);
+const UF_SUL_SUDESTE=new Set(['MG','RJ','SP','PR','RS','SC']); // Exceto ES (Res. SF 22/89)
 
-function getAliqInter(ufEmit){ return UF_SUL_SUDESTE.has(ufEmit)?0.12:0.07; }
+function getAliqInter(ufEmit){ return UF_SUL_SUDESTE.has(ufEmit)?0.07:0.12; } // S/SE→N/NE/CO/ES=7%, demais=12%
 
 function getAliqIntraMA(dataStr){
   if(!dataStr) return 0.23;
@@ -914,13 +940,15 @@ function getAliqIntraMA(dataStr){
   return 0.23;
 }
 
-function getMVAAjustada(aliqInter,aliqIntra){
-  return ((1+PA_MVA_ORIG)*(1-aliqInter)/(1-aliqIntra))-1;
+function getMVAAjustada(aliqInter,aliqIntra,mvaOrig){
+  const mva=mvaOrig!==undefined?mvaOrig:PA_MVA_ORIG;
+  return ((1+mva)*(1-aliqInter)/(1-aliqIntra))-1;
 }
 
 function isCESTAutopecas(cest){
   if(!cest) return false;
-  return cest.replace(/\./g,'').startsWith('01');
+  const c=cest.replace(/\./g,'');
+  return c.startsWith('01')||c.startsWith('16');
 }
 
 function isNCMAutopecas(ncm){
@@ -1043,7 +1071,8 @@ function executarPreAuditoria(){
     // Base pré-MVA = vProd + IPI + frete rateado + seguro rateado + outros rateados
     const basePreMVA=(item.vProd||0)+(item.ipi||0)+freteRat+seguroRat+outrosRat;
 
-    const mvaCorreta=isSimples?PA_MVA_ORIG:getMVAAjustada(aliqInter,aliqIntra);
+    const mvaOrigItem=getMVAOriginal(item);
+    const mvaCorreta=isSimples?mvaOrigItem:getMVAAjustada(aliqInter,aliqIntra,mvaOrigItem);
     const bcSTCorreta=basePreMVA*(1+mvaCorreta);
     let icmsProprioCorreto;
     if(isSimples){
@@ -1314,8 +1343,8 @@ async function exportarPA(){
     {s:'SIMPLES NACIONAL'},
     {k:'MVA Original',v:'71,78% (sem ajuste)'},
     {k:'ICMS Fictício',v:'Base × ALQ interestadual'},
-    {s:'ALQ INTERESTADUAIS'},
-    {k:'N/NE/CO → MA',v:'7%'},{k:'S/SE → MA',v:'12%'},
+    {s:'ALQ INTERESTADUAIS (Res. SF 22/89)'},
+    {k:'S/SE (exceto ES) → MA',v:'7%'},{k:'N/NE/CO/ES → MA',v:'12%'},
     {s:'ALQ INTERNAS MA'},
     {k:'Até 31/03/2023',v:'18%'},{k:'01/04/2023 a 18/02/2024',v:'20%'},
     {k:'19/02/2024 a 22/02/2025',v:'22%'},{k:'A partir de 23/02/2025',v:'23%'},

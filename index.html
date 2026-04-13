@@ -1345,32 +1345,62 @@ function xlMetodologia(wb,sheetName,items){
 let paVeicResultados=[];
 let paVeicTabAtual='irregulares';
 
-/* --- Tabela de coeficientes Conv. 51/00 --- */
-const CONV51_LINHA_I=[
-  {min:0,max:0,coef:0.5196},
-  {min:0.01,max:3.99,coef:0.5235},
-  {min:4,max:5.99,coef:0.5686},
-  {min:6,max:8.99,coef:0.5769},
-  {min:9,max:11.99,coef:0.5833},
-  {min:12,max:Infinity,coef:0.5960}
-];
-const CONV51_LINHA_II=[
-  {min:0,max:0,coef:0.8167},
-  {min:0.01,max:3.99,coef:0.8213},
-  {min:4,max:5.99,coef:0.8571},
-  {min:6,max:8.99,coef:0.8636},
-  {min:9,max:11.99,coef:0.8696},
-  {min:12,max:Infinity,coef:0.8824}
-];
+/* --- Tabela Conv. 51/00 — percentuais de ORIGEM por alíquota de IPI --- */
+/* Cl. 2ª §1º: aplicar sobre vNF → base da ORIGEM. Destino = 100% - origem. */
+/* §4º (Conv. ICMS 111/22): IPI não expresso → média aritmética simples entre faixas adjacentes */
+
+const CONV51_ORIG_I=[ // Inciso I: S/SE (exceto ES) → N/NE/CO + ES
+  {ipi:0,p:45.08},{ipi:1,p:44.59},{ipi:1.5,p:44.35},{ipi:2,p:44.12},
+  {ipi:3,p:43.66},{ipi:3.5,p:43.43},{ipi:4,p:43.21},{ipi:5,p:42.75},
+  {ipi:5.5,p:42.55},{ipi:6,p:43.21},{ipi:6.5,p:42.12},{ipi:7,p:42.78},
+  {ipi:7.5,p:41.70},{ipi:8,p:42.35},{ipi:9,p:41.94},{ipi:9.5,p:40.89},
+  {ipi:10,p:41.56},{ipi:11,p:40.24},{ipi:12,p:39.86},{ipi:13,p:39.49},
+  {ipi:14,p:39.12},{ipi:15,p:38.75},{ipi:16,p:38.40},{ipi:17,p:38.05},
+  {ipi:18,p:37.71},{ipi:19,p:37.42},{ipi:20,p:36.83},{ipi:23,p:36.01},
+  {ipi:24,p:35.77},{ipi:25,p:35.47},{ipi:30,p:35.51},{ipi:31,p:33.80},
+  {ipi:32,p:33.53},{ipi:33,p:33.26},{ipi:34,p:34.78},{ipi:35,p:32.70},
+  {ipi:35.5,p:32.57},{ipi:36.5,p:32.32},{ipi:37,p:32.90},{ipi:38,p:31.99},
+  {ipi:39,p:31.75},{ipi:40,p:31.51},{ipi:41,p:31.92},{ipi:43,p:31.45},
+  {ipi:48,p:30.34},{ipi:55,p:28.90},
+].sort((a,b)=>a.ipi-b.ipi);
+
+const CONV51_ORIG_II=[ // Inciso II: N/NE/CO/ES → qualquer; S/SE → S/SE (exceto ES)
+  {ipi:0,p:81.67},{ipi:2,p:79.83},{ipi:3.5,p:78.52},{ipi:5,p:77.25},
+  {ipi:6,p:76.84},{ipi:7,p:76.43},{ipi:8,p:76.03},{ipi:9,p:75.63},
+  {ipi:9.5,p:75.44},{ipi:10,p:74.83},{ipi:11,p:74.06},{ipi:12,p:73.33},
+  {ipi:13,p:72.55},{ipi:14,p:71.76},{ipi:15,p:69.66},{ipi:16,p:68.99},
+  {ipi:17,p:68.33},{ipi:18,p:67.73},{ipi:19,p:67.15},{ipi:20,p:66.42},
+  {ipi:23,p:64.66},{ipi:24,p:64.06},{ipi:25,p:63.49},{ipi:30,p:62.14},
+  {ipi:31,p:60.38},{ipi:32,p:59.88},{ipi:33,p:59.38},{ipi:34,p:60.11},
+  {ipi:35,p:58.37},{ipi:35.5,p:58.10},{ipi:36.5,p:57.63},{ipi:37,p:58.66},
+  {ipi:38,p:57.02},{ipi:39,p:56.57},{ipi:40,p:56.13},{ipi:41,p:56.84},
+  {ipi:43,p:55.98},{ipi:48,p:53.92},{ipi:55,p:51.28},
+].sort((a,b)=>a.ipi-b.ipi);
 
 const UF_SUL_SUDESTE_VEIC=new Set(['SP','MG','PR','SC','RS','RJ']);
 
 function getCoefConv51(pIPI,ufEmit){
   const isLinhaI=UF_SUL_SUDESTE_VEIC.has(ufEmit);
-  const tab=isLinhaI?CONV51_LINHA_I:CONV51_LINHA_II;
-  if(pIPI===0) return tab[0].coef;
-  for(const f of tab){ if(pIPI>=f.min&&pIPI<=f.max) return f.coef; }
-  return tab[tab.length-1].coef;
+  const tab=isLinhaI?CONV51_ORIG_I:CONV51_ORIG_II;
+  // Buscar match exato
+  const exato=tab.find(e=>Math.abs(e.ipi-pIPI)<0.001);
+  let origPct;
+  if(exato){
+    origPct=exato.p;
+  } else {
+    // §4º Conv. ICMS 111/22: média aritmética simples entre faixas adjacentes
+    let abaixo=null,acima=null;
+    for(const e of tab){
+      if(e.ipi<pIPI) abaixo=e;
+      if(e.ipi>pIPI&&!acima) acima=e;
+    }
+    if(abaixo&&acima) origPct=(abaixo.p+acima.p)/2;
+    else if(abaixo) origPct=abaixo.p;
+    else if(acima) origPct=acima.p;
+    else origPct=tab[0].p;
+  }
+  // Retorna coeficiente do DESTINO (percentual que vai para vBCST)
+  return{coefDest:(100-origPct)/100, origPct:origPct, interpolado:!exato};
 }
 
 function getLinhaConv51(ufEmit){ return UF_SUL_SUDESTE_VEIC.has(ufEmit)?'I':'II'; }
@@ -1408,6 +1438,18 @@ function labelConvenio(c){
     'Nao_identificado':'Não identificado'
   };
   return map[c]||c;
+}
+function convBadge(c){
+  const m={
+    'Conv_199':['🏷️','199','#1e40af','#dbeafe'],
+    'Conv_51':['📋','51','#7c3aed','#ede9fe'],
+    'Conv_51_PCD':['♿','PCD','#0369a1','#e0f2fe'],
+    'Conv_51_Taxi':['🚕','Táxi','#b45309','#fef3c7'],
+    'Conv_51_64':['🌾','C.64','#166534','#dcfce7'],
+    'Nao_identificado':['❓','?','#64748b','#f1f5f9'],
+  };
+  const d=m[c]||m['Nao_identificado'];
+  return '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;background:'+d[3]+';color:'+d[2]+';white-space:nowrap">'+d[0]+' '+d[1]+'</span>';
 }
 
 /* --- FUMACOP: gatilho de incidência --- */
@@ -1563,21 +1605,24 @@ function executarPreAuditoriaVeiculos(){
               vulnerabilidades.push('vFCPST divergente — declarado R$'+vFCPST.toFixed(2)+', esperado R$'+vfcpstEsperado.toFixed(2));
             }
           }
+        } else if((item.vFCPST||0)>0){
+          // FUMACOP declarado sem incidência
+          vulnerabilidades.push('FUMACOP declarado sem incidência — contribuinte destacou vFCPST R$'+(item.vFCPST).toLocaleString('pt-BR',{minimumFractionDigits:2})+' mas o veículo não atinge o gatilho ('+fumacopInfo.motivo+')');
         }
 
       } else if(convenio==='Conv_51'){
         // --- CONVÊNIO 51/00 ---
         const pIPI=item.pIPI||0;
-        const coefEsp=getCoefConv51(pIPI,ufEmit);
-        coefEsperado=coefEsp*100;
+        const conv51=getCoefConv51(pIPI,ufEmit);
+        coefEsperado=conv51.coefDest*100;
 
-        // Calcular coeficiente declarado
+        // Calcular coeficiente declarado — denominador = vNF (faturamento ao consumidor, inclui IPI)
         const bcST=item.bcST||0;
-        const vFat=item.vProd||0;
+        const vFat=nota.vNF||((item.vProd||0)+(item.ipi||0));
         if(vFat>0 && bcST>0){
           coefDecl=(bcST/vFat)*100;
-          if(Math.abs(coefDecl-coefEsperado)>0.05){
-            vulnerabilidades.push('Coeficiente de repartição Conv. 51 incorreto — declarado '+(coefDecl).toFixed(2)+'%, esperado '+coefEsperado.toFixed(2)+'% (IPI '+pIPI+'%, origem '+ufEmit+', Linha '+getLinhaConv51(ufEmit)+')');
+          if(Math.abs(coefDecl-coefEsperado)>0.10){
+            vulnerabilidades.push('Coeficiente de repartição Conv. 51 incorreto — declarado '+(coefDecl).toFixed(2)+'% (destino), esperado '+coefEsperado.toFixed(2)+'% (origem '+conv51.origPct.toFixed(2)+'%) — IPI '+pIPI+'%, '+ufEmit+' Linha '+getLinhaConv51(ufEmit)+(conv51.interpolado?' (§4º média aritmética)':''));
           }
         }
 
@@ -1585,7 +1630,6 @@ function executarPreAuditoriaVeiculos(){
         if(bcST>0){
           const cargaST=stDeclarado/bcST;
           cargaEfetiva=cargaST*100;
-          // ST esperado = vBCST × 12%
           stCalculado=bcST*0.12;
           divergenciaST=stCalculado-stDeclarado;
           if(Math.abs(cargaST-0.12)>0.005){
@@ -1598,20 +1642,23 @@ function executarPreAuditoriaVeiculos(){
         }
 
         // FUMACOP Conv. 51
+        const vFCPST_c51=item.vFCPST||0;
         if(fumacopAplicavel){
           const vBCFCPST=item.vBCFCPST||0;
           const pFCPST=item.pFCPST||0;
-          const vFCPST=item.vFCPST||0;
           vfcpstEsperado=(bcST||0)*0.02;
 
-          if(vFCPST===0){
+          if(vFCPST_c51===0){
             vulnerabilidades.push('Omissão de Recolhimento FUMACOP-ST (Conv. 51)');
           } else {
             if(pFCPST!==2) vulnerabilidades.push('pFCPST incorreto — declarado '+pFCPST+'%, esperado 2%');
-            if(Math.abs(vFCPST-vfcpstEsperado)>0.50){
-              vulnerabilidades.push('vFCPST divergente — declarado R$'+vFCPST.toFixed(2)+', esperado R$'+vfcpstEsperado.toFixed(2));
+            if(Math.abs(vFCPST_c51-vfcpstEsperado)>0.50){
+              vulnerabilidades.push('vFCPST divergente — declarado R$'+vFCPST_c51.toFixed(2)+', esperado R$'+vfcpstEsperado.toFixed(2));
             }
           }
+        } else if(vFCPST_c51>0){
+          // FUMACOP declarado sem incidência
+          vulnerabilidades.push('FUMACOP declarado sem incidência — contribuinte destacou vFCPST R$'+vFCPST_c51.toLocaleString('pt-BR',{minimumFractionDigits:2})+' mas o veículo não atinge o gatilho ('+fumacopInfo.motivo+'). ICMS-ST ficou a menor e FUMACOP indevido foi recolhido em código de receita diferente. Carga total efetiva: '+((stDeclarado+vFCPST_c51)/(bcST||1)*100).toFixed(2)+'%');
         }
 
       } else if(convenio==='Conv_51_PCD'){
@@ -1621,7 +1668,30 @@ function executarPreAuditoriaVeiculos(){
         fumacopAplicavel=false; // PCD nunca tem FUMACOP
 
         if(vProd>120000){
-          vulnerabilidades.push('Inconsistência documental — operação PCD com valor fora da faixa do convênio (R$'+vProd.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$120.000)');
+          // Acima de R$120k → sem benefício ICMS, tratar como Conv. 51 normal (IPI = 0, isento PCD)
+          const pIPIpcd=item.pIPI||0; // normalmente 0 (isento)
+          const conv51full=getCoefConv51(pIPIpcd,ufEmit);
+          coefEsperado=conv51full.coefDest*100;
+          const vFat=nota.vNF||vProd;
+          if(vFat>0 && bcST>0){
+            coefDecl=(bcST/vFat)*100;
+            if(Math.abs(coefDecl-coefEsperado)>0.10){
+              vulnerabilidades.push('Coeficiente de repartição Conv. 51 (PCD s/ benefício ICMS) — declarado '+(coefDecl).toFixed(2)+'% (destino), esperado '+coefEsperado.toFixed(2)+'% para IPI '+pIPIpcd+'% (isento), Linha '+getLinhaConv51(ufEmit));
+            }
+          }
+          if(bcST>0){
+            const cargaST=stDeclarado/bcST;
+            cargaEfetiva=cargaST*100;
+            stCalculado=bcST*0.12;
+            divergenciaST=stCalculado-stDeclarado;
+            if(Math.abs(cargaST-0.12)>0.005){
+              vulnerabilidades.push('Carga ST divergente — declarada '+(cargaST*100).toFixed(2)+'%, esperada 12%');
+            }
+            if(Math.abs(divergenciaST)>0.50){
+              const sinal=divergenciaST>0?'+':'';
+              vulnerabilidades.push('ICMS-ST divergente — declarado R$'+stDeclarado.toLocaleString('pt-BR',{minimumFractionDigits:2})+', esperado R$'+stCalculado.toLocaleString('pt-BR',{minimumFractionDigits:2})+' (diferença: '+sinal+divergenciaST.toLocaleString('pt-BR',{minimumFractionDigits:2})+')');
+            }
+          }
         } else if(vProd<=70000){
           // Isenção total
           stCalculado=0;
@@ -1633,9 +1703,9 @@ function executarPreAuditoriaVeiculos(){
           // Isenção parcial: tributar sobre (vProd - 70000)
           const baseTrib=vProd-70000;
           const pIPI=item.pIPI||0;
-          const coefEsp=getCoefConv51(pIPI,ufEmit);
-          coefEsperado=coefEsp*100;
-          stCalculado=baseTrib*coefEsp*0.12;
+          const conv51pcd=getCoefConv51(pIPI,ufEmit);
+          coefEsperado=conv51pcd.coefDest*100;
+          stCalculado=baseTrib*conv51pcd.coefDest*0.12;
           divergenciaST=stCalculado-stDeclarado;
           if(Math.abs(divergenciaST)>0.50){
             const sinal=divergenciaST>0?'+':'';
@@ -1656,10 +1726,10 @@ function executarPreAuditoriaVeiculos(){
         // --- CONVÊNIO 51/00 Produtor Rural (Conv. 64) ---
         alertaConv64=true;
         const pIPI=item.pIPI||0;
-        const coefEsp=getCoefConv51(pIPI,ufEmit);
-        coefEsperado=coefEsp*100;
+        const conv51c64=getCoefConv51(pIPI,ufEmit);
+        coefEsperado=conv51c64.coefDest*100;
         const bcST=item.bcST||0;
-        const vFat=item.vProd||0;
+        const vFat=nota.vNF||((item.vProd||0)+(item.ipi||0));
         if(vFat>0 && bcST>0){
           coefDecl=(bcST/vFat)*100;
         }
@@ -2173,12 +2243,12 @@ function renderMon(){
   const pagEnd=pagStart+monPorPagina;
   const pagDados=filtBusca.slice(pagStart,pagEnd);
   // Tabela
-  h+='<div class="table-card"><table class="mon-table"><thead><tr><th style="width:30px"></th><th>Status</th><th>NF-e</th><th>Veículo</th><th>UF</th><th>PMCF</th><th>Divergência</th></tr></thead><tbody>';
+  h+='<div class="table-card"><table class="mon-table"><thead><tr><th style="width:30px"></th><th>Conv.</th><th>Status</th><th>NF-e</th><th>Veículo</th><th>UF</th><th>PMCF</th><th>Divergência</th></tr></thead><tbody>';
   pagDados.forEach((r,i)=>{
     const gi=pagStart+i;
     const div=r.divergenciaST||0;
-    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'"><td><span class="expand-arrow">▶</span></td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':'irreg">⚠ Irreg')+'</span></td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td><span class="delta '+(Math.abs(div)<0.5?'zero':'up')+'">'+(div>0?'▲ +':'= ')+'R$ '+fmt(Math.abs(div))+'</span></td></tr>';
-    h+='<tr class="detail-row" id="det-'+gi+'" style="display:none"><td colspan="7"><div class="detail-grid">';
+    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':'irreg">⚠ Irreg')+'</span></td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td><span class="delta '+(Math.abs(div)<0.5?'zero':'up')+'">'+(div>0?'▲ +':'= ')+'R$ '+fmt(Math.abs(div))+'</span></td></tr>';
+    h+='<tr class="detail-row" id="det-'+gi+'" style="display:none"><td colspan="8"><div class="detail-grid">';
     h+='<div class="detail-item"><div class="lbl">Convênio</div><div class="val">'+labelConvenio(r.convenio)+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">CST · CEST</div><div class="val">'+r.cstDecl+' · '+r.CEST+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">Carga efetiva</div><div class="val" style="color:'+(r.cargaEfetiva!=null&&Math.abs(r.cargaEfetiva-12)>0.5?'var(--danger)':'var(--success)')+'">'+(r.cargaEfetiva!=null?r.cargaEfetiva.toFixed(2)+'%':'—')+'</div></div>';

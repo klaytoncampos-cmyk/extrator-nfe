@@ -400,7 +400,7 @@ const modBCMap={'0':'Margem Valor Agregado','1':'Pauta','2':'Preço Tabelado','3
 const crtMap={'1':'Simples Nacional','2':'Simples Nacional - excesso','3':'Regime Normal'};
 
 function extrairICMSItem(imp){
-  const r={CST:'',modBC:'',pICMS:0,bcICMS:0,icms:0,pMVAST:0,pICMSST:0,bcST:0,icmsST:0,vBCSTRet:0,vICMSSTRet:0,
+  const r={CST:'',orig:'',modBC:'',pICMS:0,bcICMS:0,icms:0,pMVAST:0,pICMSST:0,bcST:0,icmsST:0,vBCSTRet:0,vICMSSTRet:0,
     pRedBC:0,pRedBCST:0,
     vBCFCP:0,pFCP:0,vFCP:0,vBCFCPST:0,pFCPST:0,vFCPST:0,vBCFCPSTRet:0,pFCPSTRet:0,vFCPSTRet:0};
   if(!imp) return r;
@@ -409,6 +409,7 @@ function extrairICMSItem(imp){
   for(const c of grp.children){
     const g=(t)=>{const e=c.getElementsByTagNameNS(NS,t)[0];return e?(e.textContent||'').trim():'';};
     const n=(t)=>parseFloat(g(t))||0;
+    if(!r.orig) r.orig=g('orig');
     if(!r.CST) r.CST=g('CST')||g('CSOSN');
     r.modBC   =modBCMap[g('modBC')]||g('modBC')||r.modBC;
     r.pRedBC  =n('pRedBC')||r.pRedBC;  r.pRedBCST=n('pRedBCST')||r.pRedBCST;
@@ -929,7 +930,13 @@ const NCM_AUTOPECAS=[
 
 const UF_SUL_SUDESTE=new Set(['MG','RJ','SP','PR','RS','SC']); // Exceto ES (Res. SF 22/89)
 
-function getAliqInter(ufEmit){ return UF_SUL_SUDESTE.has(ufEmit)?0.07:0.12; } // S/SE→N/NE/CO/ES=7%, demais=12%
+/* Res. SF 13/2012: orig 1,2,3,6,7,8 → alíquota interestadual 4% (importado ou conteúdo importação > 40%) */
+const ORIG_4PCT=new Set(['1','2','3','6','7','8']);
+
+function getAliqInter(ufEmit,orig){
+  if(orig && ORIG_4PCT.has(String(orig))) return 0.04; // Res. SF 13/2012
+  return UF_SUL_SUDESTE.has(ufEmit)?0.07:0.12; // Res. SF 22/89
+}
 
 function getAliqIntraMA(dataStr){
   if(!dataStr) return 0.23;
@@ -1058,7 +1065,7 @@ function executarPreAuditoria(){
     const nota=notaMap.get(item.chave);
     const crt=nota.emitCRT||'';
     const isSimples=crt.includes('Simples')||crt==='1'||(nota.vICMS===0 && nota.vBC===0);
-    const aliqInter=getAliqInter(nota.ufEmissao);
+    const aliqInter=getAliqInter(nota.ufEmissao,item.orig);
     const aliqIntra=getAliqIntraMA(nota.data);
 
     // Rateio proporcional de frete, seguro e outros despesas da NF-e
@@ -1107,7 +1114,7 @@ function executarPreAuditoria(){
       data:nota.data, ufEmit:nota.ufEmissao,
       emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ, emitCRT:crt,
       nitem:item.nitem, cProd:item.cProd, xProd:item.xProd,
-      NCM:item.NCM, CEST:item.CEST, CFOP:item.CFOP,
+      NCM:item.NCM, CEST:item.CEST, CFOP:item.CFOP, orig:item.orig||'',
       vProd:item.vProd||0, ipiItem:item.ipi||0,
       freteRat, seguroRat, outrosRat,
       icmsItem:item.icms||0,
@@ -1343,8 +1350,9 @@ async function exportarPA(){
     {s:'SIMPLES NACIONAL'},
     {k:'MVA Original',v:'71,78% (sem ajuste)'},
     {k:'ICMS Fictício',v:'Base × ALQ interestadual'},
-    {s:'ALQ INTERESTADUAIS (Res. SF 22/89)'},
+    {s:'ALQ INTERESTADUAIS (Res. SF 22/89 e 13/2012)'},
     {k:'S/SE (exceto ES) → MA',v:'7%'},{k:'N/NE/CO/ES → MA',v:'12%'},
+    {k:'Importados / CI > 40% (orig 1,2,3,6,7,8)',v:'4% (Res. SF 13/2012)'},
     {s:'ALQ INTERNAS MA'},
     {k:'Até 31/03/2023',v:'18%'},{k:'01/04/2023 a 18/02/2024',v:'20%'},
     {k:'19/02/2024 a 22/02/2025',v:'22%'},{k:'A partir de 23/02/2025',v:'23%'},

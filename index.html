@@ -225,6 +225,7 @@ html.dark .skeleton::after{background:linear-gradient(90deg,transparent,rgba(255
 tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 .status-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
 .status-pill.irreg{background:var(--danger-soft);color:var(--danger)}
+.status-pill.atencao{background:#fef3c7;color:#92400e}
 .status-pill.ok{background:var(--success-soft);color:var(--success)}
 .detail-row td{background:var(--primary-soft);padding:18px 24px;border-bottom:1px solid var(--border)}
 .detail-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
@@ -1869,10 +1870,23 @@ function executarPreAuditoriaVeiculos(){
     }
 
     // Determinar status do item
+    // Irregular = impacto financeiro real (divergência ST > R$5 ou FUMACOP divergente)
+    // Atenção = vulnerabilidade formal sem impacto financeiro (coeficiente errado, pRedBCST diferente, mas ST bate)
+    // Regular = tudo OK
     if(vulnerabilidades.length>0 && statusItem!=='Irregular'){
       const ignorar=['tag veicProd ausente'];
       const temCritica=vulnerabilidades.some(v=>!ignorar.some(ig=>v.includes(ig)));
-      if(temCritica) statusItem='Irregular';
+      if(temCritica){
+        const temImpactoST=Math.abs(divergenciaST)>5.00;
+        const temImpactoFumacop=fumacopAplicavel && Math.abs((item.vFCPST||0)-vfcpstEsperado)>5.00;
+        const temOmissaoST=cstDecl==='00';
+        const temOmissaoFumacop=fumacopAplicavel && (item.vFCPST||0)===0;
+        if(temImpactoST || temImpactoFumacop || temOmissaoST || temOmissaoFumacop){
+          statusItem='Irregular';
+        } else {
+          statusItem='Atencao';
+        }
+      }
     }
 
     paVeicResultados.push({
@@ -1906,7 +1920,7 @@ function executarPreAuditoriaVeiculos(){
   });
 
   // Ordenar: irregulares primeiro, depois por data
-  const ordemSt={Irregular:0,Regular:1};
+  const ordemSt={Irregular:0,Atencao:1,Regular:2};
   paVeicResultados.sort((a,b)=>(ordemSt[a.statusItem]||0)-(ordemSt[b.statusItem]||0)||(a.data||'').localeCompare(b.data||''));
   // Renderização é feita por renderMon() chamado pelo execMon()
 }
@@ -1979,23 +1993,23 @@ async function exportarPAVeiculos(){
   // Aba 3: Resumo Convênio
   {const resumoConv=new Map();
   resultados.forEach(r=>{
-    if(!resumoConv.has(r.convenio))resumoConv.set(r.convenio,{total:0,irreg:0,reg:0,stDecl:0,fumaDecl:0,fumaEsp:0});
+    if(!resumoConv.has(r.convenio))resumoConv.set(r.convenio,{total:0,irreg:0,atencao:0,reg:0,stDecl:0,fumaDecl:0,fumaEsp:0});
     const g=resumoConv.get(r.convenio);g.total++;
-    if(r.statusItem==='Irregular')g.irreg++;else g.reg++;
+    if(r.statusItem==='Irregular')g.irreg++;else if(r.statusItem==='Atencao')g.atencao++;else g.reg++;
     g.stDecl+=r.stDeclarado;g.fumaDecl+=r.vFCPSTDecl;g.fumaEsp+=r.vfcpstEsperado;
   });
-  const hd=['Convênio','Total','Irregulares','Regulares','ST Declarado','FUMACOP Decl.','FUMACOP Esp.','Diverg. FUMACOP'];
+  const hd=['Convênio','Total','Irregulares','Atenção','Regulares','ST Declarado','FUMACOP Decl.','FUMACOP Esp.','Diverg. FUMACOP'];
   const ws=wb.addWorksheet('Resumo Convênio',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'📊 RESUMO POR CONVÊNIO',hd.length,1);
   xlSubtitle(ws,'Gerado em '+hoje,hd.length,2);ws.getRow(3).height=4;
   xlHeaderRow(ws,hd,4);
   [...resumoConv.entries()].forEach(([k,g],i)=>{
     const rn=5+i;const z=i%2===1;
-    xlDataRow(ws,[labelConvenio(k),g.total,g.irreg,g.reg,r2(g.stDecl),r2(g.fumaDecl),r2(g.fumaEsp),r2(g.fumaEsp-g.fumaDecl)],rn,z);
-    [5,6,7].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
-    xlDivCell(ws.getCell(rn,8),g.fumaEsp-g.fumaDecl);
+    xlDataRow(ws,[labelConvenio(k),g.total,g.irreg,g.atencao,g.reg,r2(g.stDecl),r2(g.fumaDecl),r2(g.fumaEsp),r2(g.fumaEsp-g.fumaDecl)],rn,z);
+    [6,7,8].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+    xlDivCell(ws.getCell(rn,9),g.fumaEsp-g.fumaDecl);
   });
-  xlAutoWidth(ws,[35,10,12,10,16,18,18,18]);}
+  xlAutoWidth(ws,[35,10,12,10,10,16,18,18,18]);}
 
   // Aba 4: FUMACOP
   {const fuma=resultados.filter(r=>r.fumacopAplicavel);
@@ -2156,10 +2170,12 @@ function renderMon(){
   let filt=dados.filter(r=>{
     if(monMesFiltro!=='todos'&&getMesAno(r.data)!==monMesFiltro)return false;
     if(monStatusFiltro==='irreg'&&r.statusItem!=='Irregular')return false;
+    if(monStatusFiltro==='atencao'&&r.statusItem!=='Atencao')return false;
     if(monStatusFiltro==='ok'&&r.statusItem!=='Regular')return false;
     return true;
   });
   const irreg=filt.filter(r=>r.statusItem==='Irregular').length;
+  const atencao=filt.filter(r=>r.statusItem==='Atencao').length;
   const reg=filt.filter(r=>r.statusItem==='Regular').length;
   const tSTd=filt.reduce((s,r)=>s+(r.stDeclarado||0),0);
   const tSTe=filt.reduce((s,r)=>s+(r.stCalculado!=null?r.stCalculado:r.stDeclarado||0),0);
@@ -2192,6 +2208,7 @@ function renderMon(){
   h+='<div class="card"><div class="card-head"><div class="card-icon blue">📊</div>Itens analisados</div>';
   h+='<div class="card-row"><span class="label">Total</span><span class="value big">'+filt.length+'</span></div>';
   h+='<div class="card-row"><span class="label">⚠ Irregulares</span><span class="value" style="color:var(--danger)">'+irreg+'</span></div>';
+  h+='<div class="card-row"><span class="label">🔍 Atenção</span><span class="value" style="color:#92400e">'+atencao+'</span></div>';
   h+='<div class="card-row"><span class="label">✓ Regulares</span><span class="value" style="color:var(--success)">'+reg+'</span></div></div>';
   h+='<div class="card"><div class="card-head"><div class="card-icon amber">💰</div>ICMS-ST</div>';
   h+='<div class="card-row"><span class="label">Declarado</span><span class="value">R$ '+fmt(tSTd)+'</span></div>';
@@ -2219,6 +2236,7 @@ function renderMon(){
   h+='<div class="quick-filters">';
   h+='<div class="chip '+(monStatusFiltro==='todos'?'active':'')+'" onclick="monStatusFiltro=\'todos\';monPagina=1;renderMon()">Todos<span class="count">'+dados.length+'</span></div>';
   h+='<div class="chip '+(monStatusFiltro==='irreg'?'active':'')+'" onclick="monStatusFiltro=\'irreg\';monPagina=1;renderMon()">⚠ Irregulares<span class="count">'+dados.filter(r=>r.statusItem==='Irregular').length+'</span></div>';
+  h+='<div class="chip '+(monStatusFiltro==='atencao'?'active':'')+'" onclick="monStatusFiltro=\'atencao\';monPagina=1;renderMon()">🔍 Atenção<span class="count">'+dados.filter(r=>r.statusItem==='Atencao').length+'</span></div>';
   h+='<div class="chip '+(monStatusFiltro==='ok'?'active':'')+'" onclick="monStatusFiltro=\'ok\';monPagina=1;renderMon()">✓ Regulares<span class="count">'+dados.filter(r=>r.statusItem==='Regular').length+'</span></div>';
   h+='<input class="mon-search" type="text" placeholder="Buscar por NF-e, emitente, NCM..." value="'+monBusca.replace(/"/g,'&quot;')+'" oninput="monBusca=this.value;monPagina=1;renderMon()">';
   h+='</div>';
@@ -2236,7 +2254,7 @@ function renderMon(){
   pagDados.forEach((r,i)=>{
     const gi=pagStart+i;
     const div=r.divergenciaST||0;
-    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':'irreg">⚠ Irreg')+'</span></td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td><span class="delta '+(Math.abs(div)<0.5?'zero':'up')+'">'+(div>0?'▲ +':'= ')+'R$ '+fmt(Math.abs(div))+'</span></td></tr>';
+    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':r.statusItem==='Atencao'?'atencao">🔍 Atenção':'irreg">⚠ Irreg')+'</span></td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td><span class="delta '+(Math.abs(div)<0.5?'zero':'up')+'">'+(div>0?'▲ +':'= ')+'R$ '+fmt(Math.abs(div))+'</span></td></tr>';
     h+='<tr class="detail-row" id="det-'+gi+'" style="display:none"><td colspan="8"><div class="detail-grid">';
     h+='<div class="detail-item"><div class="lbl">Convênio</div><div class="val">'+labelConvenio(r.convenio)+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">CST · CEST</div><div class="val">'+r.cstDecl+' · '+r.CEST+'</div></div>';

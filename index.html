@@ -1269,10 +1269,11 @@ function renderPATable(){
   dados.forEach((r,i)=>{
     const stCls=r.status==='sem'?'sem':r.status==='diverg'?'div':'ok';
     const stTxt=r.status==='sem'?'⚠ SEM':r.status==='diverg'?'⚠ DIV':'✓ OK';
+    const alertIcon=r.alertas&&r.alertas.length?'<span title="'+r.alertas.join('\n').replace(/"/g,'&quot;')+'" style="margin-left:4px;cursor:help;font-size:13px">🔍</span>':'';
     const valor=r.status==='sem'?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
     const mvaCmp=r.mvaUsada!=null?'<span style="color:#b91c1c;font-size:10px">'+pct(r.mvaUsada)+'</span> <span style="font-weight:700">'+pct(r.mvaCorreta)+'</span>':pct(r.mvaCorreta);
     const valColor=r.status==='sem'?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
-    h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span></td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
+    h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
     h+=`<tr id="pad-${i}" style="display:none;background:#f8fafc;border-left:3px solid #1e40af"><td colspan="10" style="padding:6px 0">
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Identificação</h5><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b></div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
@@ -1310,7 +1311,7 @@ async function exportarPA(){
     'Item','Cód.Produto','Descrição','NCM','CEST','CFOP',
     'Vl.Produto','IPI Item','Frete Rat.','Seguro Rat.','Outros Rat.','Base Pré-MVA',
     'ALQ Inter','ALQ Intra','MVA Correta','BC-ST Calculada','ICMS Próprio','ICMS-ST Devido',
-    'Match CEST','Match NCM'];
+    'Match CEST','Match NCM','Alertas'];
   const ws=wb.addWorksheet('Sem Retenção ST',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'⚠ ITENS SEM RETENÇÃO ICMS-ST',hd.length,1);
   xlSubtitle(ws,semR.length+' item(ns) · Gerado em '+hoje,hd.length,2);
@@ -1321,7 +1322,8 @@ async function exportarPA(){
       r.nitem,r.cProd,r.xProd,r.NCM,r.CEST,r.CFOP,
       r2(r.vProd),r2(r.ipiItem),r2(r.freteRat),r2(r.seguroRat),r2(r.outrosRat),r2(r.basePreMVA),
       r2(r.aliqInter),r2(r.aliqIntra),r2(r.mvaCorreta),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
-      r.matchCEST?'Sim':'Não',r.matchNCM?'Sim':'Não'];
+      r.matchCEST?'Sim':'Não',r.matchNCM?'Sim':'Não',
+      (r.alertas||[]).join(' | ')];
     const rn=5+i;const z=i%2===1;
     xlDataRow(ws,row,rn,z);
     moneyCols.forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
@@ -1329,14 +1331,14 @@ async function exportarPA(){
     xlDivCell(ws.getCell(rn,27),r.icmsSTCorreto);
   });
   if(semR.length)xlTotalRow(ws,[16,17,18,19,20,21,25,26,27],5+semR.length,5,4+semR.length);
-  xlAutoWidth(ws,[10,8,6,48,5,16,30,16,8,6,12,35,10,10,6,16,14,14,14,14,16,10,10,10,16,16,16,8,8]);
+  xlAutoWidth(ws,[10,8,6,48,5,16,30,16,8,6,12,35,10,10,6,16,14,14,14,14,16,10,10,10,16,16,16,8,8,40]);
   ws.autoFilter={from:{row:4,column:1},to:{row:4+semR.length,column:hd.length}};}
 
   // Aba 2: Verificação ST
   const comR=paResultados.filter(r=>r.status!=='sem');
   {const hd=['Período','NF-e','Chave','UF','Emitente','Regime','Status',
     'Item','Descrição','NCM','CEST','Vl.Produto','BC-ST Declarada','ST Declarado',
-    'MVA Usada','MVA Correta','BC-ST Correta','ST Correto','Diferença'];
+    'MVA Usada','MVA Correta','BC-ST Correta','ST Correto','Diferença','Alertas'];
   const ws=wb.addWorksheet('Verificação ST',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'🔎 VERIFICAÇÃO ICMS-ST (MVA)',hd.length,1);
   xlSubtitle(ws,comR.length+' item(ns) · Gerado em '+hoje,hd.length,2);
@@ -1348,7 +1350,8 @@ async function exportarPA(){
       isOk?'✓ OK':'⚠ DIVERGENTE',r.nitem,r.xProd,r.NCM,r.CEST,
       r2(r.vProd),r2(r.bcSTDeclarado),r2(r.stDeclarado),
       r.mvaUsada!==null?r2(r.mvaUsada):'',r2(r.mvaCorreta),
-      r2(r.bcSTCorreta),r2(r.icmsSTCorreto),r2(r.diferenca)];
+      r2(r.bcSTCorreta),r2(r.icmsSTCorreto),r2(r.diferenca),
+      (r.alertas||[]).join(' | ')];
     const rn=5+i;const z=i%2===1;
     xlDataRow(ws,row,rn,z);
     xlStatusCell(ws.getCell(rn,7),isOk);
@@ -1356,7 +1359,7 @@ async function exportarPA(){
     [15,16].forEach(c=>{xlPctCell(ws.getCell(rn,c));});
     xlDivCell(ws.getCell(rn,19),r.diferenca);
   });
-  xlAutoWidth(ws,[10,8,48,5,30,8,14,6,35,10,10,16,16,16,10,10,16,16,16]);
+  xlAutoWidth(ws,[10,8,48,5,30,8,14,6,35,10,10,16,16,16,10,10,16,16,16,40]);
   ws.autoFilter={from:{row:4,column:1},to:{row:4+comR.length,column:hd.length}};}
 
   // Aba 3: Resumo UF/Ano
@@ -2086,10 +2089,11 @@ function renderMon(){
     dados.forEach((r,i)=>{
       const stCls=r.status==='sem'?'sem':r.status==='diverg'?'div':'ok';
       const stTxt=r.status==='sem'?'⚠ SEM':r.status==='diverg'?'⚠ DIV':'✓ OK';
+      const alertIcon=r.alertas&&r.alertas.length?'<span title="'+r.alertas.join('\n').replace(/"/g,'&quot;')+'" style="margin-left:4px;cursor:help;font-size:13px">🔍</span>':'';
       const valor=r.status==='sem'?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
       const valColor=r.status==='sem'?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
       const mvaCmp=r.mvaUsada!=null?'<span style="color:#b91c1c;font-size:10px">'+pct(r.mvaUsada)+'</span> <span style="font-weight:700">'+pct(r.mvaCorreta)+'</span>':pct(r.mvaCorreta);
-      h+=`<tr class="main" onclick="(function(e,a){var d=document.getElementById('apd-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span></td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
+      h+=`<tr class="main" onclick="(function(e,a){var d=document.getElementById('apd-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
       h+=`<tr id="apd-${i}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
        <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b></div></div>
        <div class="ap-section"><h5>Cálculo da base</h5><div class="row">Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>

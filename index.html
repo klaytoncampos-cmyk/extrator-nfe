@@ -1132,6 +1132,25 @@ function executarPreAuditoria(){
       }
     }
 
+    // Alertas de classificação
+    const alertas=[];
+    const _matchCEST=isCESTAutopecas(item.CEST);
+    const _matchNCM=isNCMAutopecas(item.NCM);
+    if(_matchCEST && !_matchNCM){
+      const ncmStr=(item.NCM||'').trim();
+      if(!ncmStr || ncmStr==='00000000') alertas.push('⚠️ CEST autopeças ('+item.CEST+') mas NCM ausente/inválido — possível erro de classificação');
+      else alertas.push('⚠️ CEST autopeças ('+item.CEST+') mas NCM '+ncmStr+' não consta na lista de autopeças — verificar classificação');
+    }
+    if(_matchNCM && !_matchCEST){
+      const cestStr=(item.CEST||'').trim();
+      if(!cestStr) alertas.push('⚠️ NCM '+(item.NCM||'')+' consta na lista de autopeças mas CEST não informado — verificar se item é autopeça');
+      else alertas.push('⚠️ NCM '+(item.NCM||'')+' consta na lista de autopeças mas CEST '+cestStr+' não pertence ao segmento 01/16 — verificar classificação');
+    }
+    const cfop=(item.CFOP||'').trim();
+    if(['6910','6911','6949','5910','5911','5949'].includes(cfop)){
+      alertas.push('⚠️ CFOP '+cfop+' (bonificação/amostra/outras saídas) — operação normalmente não sujeita a ST');
+    }
+
     paResultados.push({
       chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
       data:nota.data, ufEmit:nota.ufEmissao,
@@ -1147,9 +1166,9 @@ function executarPreAuditoria(){
       bcSTDeclarado, stDeclarado,
       mvaUsada,
       mvaCorreta, bcSTCorreta, icmsProprioCorreto, icmsSTCorreto,
-      status, diferenca,
-      matchCEST:isCESTAutopecas(item.CEST),
-      matchNCM:isNCMAutopecas(item.NCM),
+      status, diferenca, alertas,
+      matchCEST:_matchCEST,
+      matchNCM:_matchNCM,
     });
   });
 
@@ -1262,6 +1281,7 @@ function renderPATable(){
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">MVA</td><td style="text-align:right;padding:6px 16px">${r.mvaUsada!=null?pct(r.mvaUsada):'—'}</td><td style="text-align:right;padding:6px 16px">${pct(r.mvaCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">ICMS-ST</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.stDeclarado)}</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.icmsSTCorreto)}</td><td style="text-align:right;padding:6px 0 6px 16px;color:${r.diferenca>0.5?'#b91c1c':r.diferenca<-0.5?'#92400e':'#166534'};font-weight:700">${r.diferenca>0?'+':''}R$ ${fmt(r.diferenca)}</td></tr>
      </tbody></table></div>
+    ${r.alertas&&r.alertas.length?'<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:8px 14px;margin:8px 12px;font-size:12px;color:#92400e">'+r.alertas.join('<br>')+'</div>':''}
     </td></tr>`;
   });
   h+='</tbody></table>';
@@ -2078,6 +2098,7 @@ function renderMon(){
         <tr><td>MVA</td><td>${r.mvaUsada!=null?pct(r.mvaUsada):'—'}</td><td>${pct(r.mvaCorreta)}</td><td>—</td></tr>
         <tr><td>ICMS-ST</td><td>R$ ${fmt(r.stDeclarado)}</td><td>R$ ${fmt(r.icmsSTCorreto)}</td><td class="${r.diferenca>0.5?'pos':r.diferenca<-0.5?'neg':'zero'}">${r.diferenca>0?'+':''}R$ ${fmt(r.diferenca)}</td></tr>
        </tbody></table></div>
+      ${r.alertas&&r.alertas.length?'<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:8px 14px;margin:8px 12px;font-size:12px;color:#92400e">'+r.alertas.join('<br>')+'</div>':''}
       </td></tr>`;
     });
     h+='</tbody></table>';

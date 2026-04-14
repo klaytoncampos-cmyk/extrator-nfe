@@ -1631,7 +1631,9 @@ function executarPreAuditoriaVeiculos(){
         const icmsDecl=item.icms||0;
 
         // PMCF (base cheia antes da redução): usar vBCFCPST se disponível, senão reverter de bcST
-        const pRedSTDecl=item.pRedBCST||0;
+        let pRedSTDecl=item.pRedBCST||0;
+        // Normalizar: alguns emitentes declaram pRedBCST como fração (0.40) em vez de percentual (40.00)
+        if(pRedSTDecl>0 && pRedSTDecl<1) pRedSTDecl=pRedSTDecl*100;
         let pmcf=item.vBCFCPST||0;
         if(pmcf===0 && pRedSTDecl>0 && bcST>0){
           pmcf=bcST/(1-(pRedSTDecl/100));

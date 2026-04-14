@@ -1640,8 +1640,8 @@ function executarPreAuditoriaVeiculos(){
         }
         if(pmcf===0) pmcf=bcST;
 
-        // Re-avaliar FUMACOP com PMCF real (não base reduzida)
-        if(pmcf>0 && pmcf!==bcST){
+        // Re-avaliar FUMACOP com PMCF real (não base reduzida) — somente se data >= 23/02/2025
+        if(pmcf>0 && pmcf!==bcST && dataStr.replace(/\//g,'-')>='2025-02-23'){
           const cest=(item.CEST||'').replace(/\./g,'');
           if(cest.startsWith('25') && pmcf>150000 && !fumacopAplicavel){
             fumacopAplicavel=true;

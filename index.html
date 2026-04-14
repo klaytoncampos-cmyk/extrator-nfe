@@ -1597,6 +1597,36 @@ function executarPreAuditoriaVeiculos(){
     const vulnerabilidades=[];
     let statusItem='Regular';
 
+    // Entrega em outra UF — ST não é devido ao MA, só registrar valores declarados
+    const entregaOutra=(nota.entregaUF && nota.entregaUF!=='' && nota.entregaUF!=='MA');
+    if(entregaOutra){
+      paVeicResultados.push({
+        chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
+        data:dataStr, ufEmit:ufEmit,
+        emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ,
+        destUF:nota.destUF||'', entregaUF:nota.entregaUF||'', entregaMun:nota.entregaMun||'',
+        nitem:item.nitem, xProd:item.xProd, NCM:item.NCM, CEST:item.CEST,
+        cstDecl:item.CST||'', cstEsperado:'',
+        chassi:item.chassi||'', cilin:item.cilin||0,
+        hasVeicProd:item.hasVeicProd,
+        convenio:convenio, alertaConv64:false,
+        coefDecl:null, coefEsperado:null,
+        pRedBCDecl:null, pRedBCEsperado:null,
+        cargaEfetiva:null,
+        vProd:item.vProd||0,
+        bcST:item.bcST||0,
+        stDeclarado:item.icmsST||0, stCalculado:null,
+        divergenciaST:0,
+        fumacopAplicavel:false, fumacopBaseCorreta:true,
+        pFCPSTDecl:item.pFCPST||0, vFCPSTDecl:item.vFCPST||0, vfcpstEsperado:0,
+        fumacopMotivo:'Entrega em outra UF',
+        statusItem:'outraUF',
+        vulnerabilidades:[],
+        pIPI:item.pIPI||0, icmsDecl:item.icms||0,
+      });
+      return; // pula cálculos
+    }
+
     // ETAPA 1: Verificações obrigatórias
     if(!item.hasVeicProd) vulnerabilidades.push('Erro de Preenchimento Obrigatório — tag veicProd ausente');
 
@@ -1886,6 +1916,9 @@ async function exportarPAVeiculos(){
   if(!paVeicResultados.length){alert('Execute a pré-auditoria de veículos primeiro.');return;}
   const wb=new ExcelJS.Workbook();const hoje=new Date().toISOString().substring(0,10);
   const r2=v=>typeof v==='number'?Math.round(v*100)/100:v;
+  // Separar outra UF
+  const resultados=paVeicResultados.filter(r=>r.statusItem!=='outraUF');
+  const outraUFItems=paVeicResultados.filter(r=>r.statusItem==='outraUF');
 
   // Aba 1: Análise Veículos
   {const hd=['Status','Convênio','Período','NF-e','Série','Chave','UF Emit.','CNPJ Emit.','Emitente',
@@ -1897,10 +1930,10 @@ async function exportarPAVeiculos(){
     'FUMACOP Motivo','Alerta Conv.64','Vulnerabilidades'];
   const ws=wb.addWorksheet('Análise Veículos',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'🚗 PRÉ-AUDITORIA VEÍCULOS ICMS-ST',hd.length,1);
-  xlSubtitle(ws,paVeicResultados.length+' item(ns) · Gerado em '+hoje,hd.length,2);
+  xlSubtitle(ws,resultados.length+' item(ns) analisado(s)'+(outraUFItems.length?' · '+outraUFItems.length+' excluído(s) (entrega outra UF)':'')+' · Gerado em '+hoje,hd.length,2);
   ws.getRow(3).height=4;
   xlHeaderRow(ws,hd,4);
-  paVeicResultados.forEach((r,i)=>{
+  resultados.forEach((r,i)=>{
     const rn=5+i;const z=i%2===1;const isOk=r.statusItem==='Regular';
     const row=[r.statusItem,labelConvenio(r.convenio),r.data,r.numero,r.serie,r.chave,
       r.ufEmit,r.emitCNPJ,r.emitNome,r.destUF||'',r.entregaUF||'',r.entregaMun||'',
@@ -1923,10 +1956,10 @@ async function exportarPAVeiculos(){
     }
   });
   xlAutoWidth(ws,[14,22,10,8,6,48,6,16,30,6,8,14,6,35,10,12,6,18,10,16,16,12,16,16,16,12,12,12,12,8,12,10,14,14,14,30,8,50]);
-  ws.autoFilter={from:{row:4,column:1},to:{row:4+paVeicResultados.length,column:hd.length}};}
+  ws.autoFilter={from:{row:4,column:1},to:{row:4+resultados.length,column:hd.length}};}
 
   // Aba 2: Irregulares
-  {const irreg=paVeicResultados.filter(r=>r.statusItem==='Irregular');
+  {const irreg=resultados.filter(r=>r.statusItem==='Irregular');
   const hd=['Convênio','NF-e','Chave','UF','Emitente','Descrição','CEST','CST',
     'Vl.Produto','ST Decl.','FUMACOP Decl.','FUMACOP Esp.','Vulnerabilidades'];
   const ws=wb.addWorksheet('Irregulares',{views:[{state:'frozen',ySplit:4}]});
@@ -1945,7 +1978,7 @@ async function exportarPAVeiculos(){
 
   // Aba 3: Resumo Convênio
   {const resumoConv=new Map();
-  paVeicResultados.forEach(r=>{
+  resultados.forEach(r=>{
     if(!resumoConv.has(r.convenio))resumoConv.set(r.convenio,{total:0,irreg:0,reg:0,stDecl:0,fumaDecl:0,fumaEsp:0});
     const g=resumoConv.get(r.convenio);g.total++;
     if(r.statusItem==='Irregular')g.irreg++;else g.reg++;
@@ -1965,7 +1998,7 @@ async function exportarPAVeiculos(){
   xlAutoWidth(ws,[35,10,12,10,16,18,18,18]);}
 
   // Aba 4: FUMACOP
-  {const fuma=paVeicResultados.filter(r=>r.fumacopAplicavel);
+  {const fuma=resultados.filter(r=>r.fumacopAplicavel);
   const hd=['NF-e','Chave','UF','Emitente','Descrição','CEST','Vl.Produto','Cilindrada',
     'pFCPST Decl.','vFCPST Decl.','vFCPST Esperado','Divergência','Base Correta?','Motivo'];
   const ws=wb.addWorksheet('FUMACOP',{views:[{state:'frozen',ySplit:4}]});
@@ -2111,8 +2144,11 @@ function renderMon(){
     c.innerHTML=h;
     return;
   }
-  const dados=monModulo==='veiculos'?paVeicResultados:paResultados;
-  if(!dados||!dados.length){document.getElementById('mon-results').innerHTML='<div class="placeholder-msg"><div class="icon">📭</div>Nenhum item encontrado para análise</div>';return;}
+  const dadosBrutos=monModulo==='veiculos'?paVeicResultados:paResultados;
+  // Separar itens de outra UF (não contam nos totais)
+  const outraUF=monModulo==='veiculos'?dadosBrutos.filter(r=>r.statusItem==='outraUF'):[];
+  const dados=monModulo==='veiculos'?dadosBrutos.filter(r=>r.statusItem!=='outraUF'):dadosBrutos;
+  if(!dados||!dados.length){document.getElementById('mon-results').innerHTML='<div class="placeholder-msg"><div class="icon">📭</div>Nenhum item encontrado para análise'+(outraUF.length?' ('+outraUF.length+' item(ns) com entrega em outra UF excluído(s))':'')+'</div>';return;}
   // Agrupar por mês
   const meses={};dados.forEach(r=>{const k=getMesAno(r.data);if(!meses[k])meses[k]={n:0,div:0};meses[k].n++;meses[k].div+=Math.max(0,r.divergenciaST||0);});
   const mesesKeys=Object.keys(meses).sort();
@@ -2135,23 +2171,21 @@ function renderMon(){
   // Build HTML
   let h='';
 
-  // ALERTA: Veículos com entrega em outra UF (destUF=MA mas entregaUF ≠ MA)
-  if(monModulo==='veiculos'){
-    const entregaOutraUF=dados.filter(r=>r.destUF==='MA'&&r.entregaUF&&r.entregaUF!=='MA'&&r.entregaUF!=='');
-    if(entregaOutraUF.length){
-      const stEntregaOutra=entregaOutraUF.reduce((s,r)=>s+(r.stDeclarado||0),0);
-      h+='<div style="background:#fef3c7;border:1px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:10px;padding:14px 18px;margin-bottom:16px">';
-      h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:18px">⚠️</span><strong style="font-size:13px;color:#92400e">Atenção — Veículos com local de entrega em outra UF</strong></div>';
-      h+='<p style="font-size:12px;color:#78350f;margin:0 0 10px;line-height:1.5">Foram detectados <b>'+entregaOutraUF.length+' item(ns)</b> com destinatário no MA, porém <b>local de entrega em outra UF</b>. Nesses casos, o ICMS-ST é devido à UF de entrega, não ao Maranhão. O valor de ST declarado nesses itens (R$ '+fmt(stEntregaOutra)+') pode não ser devido ao MA.</p>';
-      h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
-      entregaOutraUF.forEach(r=>{
-        h+='<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;background:#fff;border:1px solid #fcd34d;font-size:11px;font-weight:600;color:#92400e">';
-        h+='NF '+r.numero+' → entrega em <b>'+r.entregaUF+'</b>'+(r.entregaMun?' ('+r.entregaMun+')':'');
-        h+=' · ST R$ '+fmt(r.stDeclarado);
-        h+='</span>';
-      });
-      h+='</div></div>';
-    }
+  // ALERTA COMPACTO: Veículos com entrega em outra UF
+  if(outraUF.length){
+    const stOutra=outraUF.reduce((s,r)=>s+(r.stDeclarado||0),0);
+    const ufs={};outraUF.forEach(r=>{const u=r.entregaUF||'?';if(!ufs[u])ufs[u]=0;ufs[u]++;});
+    const ufList=Object.entries(ufs).map(([u,n])=>u+' ('+n+')').join(', ');
+    h+='<div style="background:#fef3c7;border:1px solid #fcd34d;border-left:4px solid #f59e0b;border-radius:10px;padding:14px 18px;margin-bottom:16px">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="var d=document.getElementById(\'outraUF-list\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'">';
+    h+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">🚚</span><span style="font-size:13px;color:#92400e"><b>'+outraUF.length+' veículo(s)</b> com entrega em outra UF — excluído(s) da análise · ST declarado R$ '+fmt(stOutra)+' · UFs: '+ufList+'</span></div>';
+    h+='<span style="font-size:11px;color:#92400e;font-weight:600">▶ Expandir</span>';
+    h+='</div>';
+    h+='<div id="outraUF-list" style="display:none;margin-top:10px;max-height:300px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#fef9c3"><th style="padding:6px 8px;text-align:left">NF-e</th><th style="text-align:left;padding:6px 8px">Veículo</th><th style="text-align:left;padding:6px 8px">UF Entrega</th><th style="text-align:left;padding:6px 8px">Município</th><th style="text-align:right;padding:6px 8px">ST Decl.</th></tr></thead><tbody>';
+    outraUF.forEach(r=>{
+      h+='<tr style="border-bottom:1px solid #fde68a"><td style="padding:4px 8px;font-weight:600">'+r.numero+'</td><td style="padding:4px 8px">'+(r.xProd||'').substring(0,35)+'</td><td style="padding:4px 8px"><b>'+r.entregaUF+'</b></td><td style="padding:4px 8px">'+(r.entregaMun||'')+'</td><td style="padding:4px 8px;text-align:right">R$ '+fmt(r.stDeclarado)+'</td></tr>';
+    });
+    h+='</tbody></table></div></div>';
   }
 
   h+='<div class="cards-grid">';

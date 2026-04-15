@@ -1152,6 +1152,11 @@ function executarPreAuditoria(){
       alertas.push('⚠️ CFOP '+cfop+' (bonificação/amostra/outras saídas) — operação normalmente não sujeita a ST');
     }
 
+    // Detectar devolução
+    const _finNFe=(nota.finNFe||'').toLowerCase();
+    const _cfop=(item.CFOP||'').trim();
+    const isDevolucao=_finNFe.includes('devolu')||['1411','2411','5411','6411','1414','2414','5414','6414'].includes(_cfop);
+
     paResultados.push({
       chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
       data:nota.data, ufEmit:nota.ufEmissao,
@@ -1167,7 +1172,7 @@ function executarPreAuditoria(){
       bcSTDeclarado, stDeclarado,
       mvaUsada,
       mvaCorreta, bcSTCorreta, icmsProprioCorreto, icmsSTCorreto,
-      status, diferenca, alertas,
+      status, diferenca, alertas, isDevolucao,
       matchCEST:_matchCEST,
       matchNCM:_matchNCM,
     });
@@ -2076,15 +2081,40 @@ function renderMon(){
     if(!paResultados||!paResultados.length){c.innerHTML='<div class="placeholder-msg"><div class="icon">📭</div>Nenhum item de autopeças</div>';return;}
     const pct=v=>(v==null?'—':(v*100).toFixed(2)+'%');
     const fmtData=d=>{if(!d)return'—';const p=(''+d).split('-');return p.length>=2?p[1]+'/'+p[0]:d;};
-    const sem=paResultados.filter(r=>r.status==='sem');
-    const div=paResultados.filter(r=>r.status==='diverg');
-    const ok=paResultados.filter(r=>r.status==='ok');
+
+    // Excluir devoluções dos totais (mantém na lista)
+    const todos=paResultados;
+    const naoDevol=todos.filter(r=>!r.isDevolucao);
+    const numDevol=todos.filter(r=>r.isDevolucao).length;
+
+    // Agrupar por mês (só não-devoluções)
+    const meses={};naoDevol.forEach(r=>{const k=getMesAno(r.data);if(!meses[k])meses[k]={n:0,sem:0,div:0,ok:0,vlSem:0,vlDif:0};meses[k].n++;if(r.status==='sem'){meses[k].sem++;meses[k].vlSem+=(+r.icmsSTCorreto||0);}else if(r.status==='diverg'){meses[k].div++;if(r.diferenca>0)meses[k].vlDif+=(+r.diferenca||0);}else meses[k].ok++;});
+    const mesesKeys=Object.keys(meses).sort();
+
+    // Filtrar por mês
+    let filtBase=naoDevol;
+    if(monMesFiltro!=='todos') filtBase=naoDevol.filter(r=>getMesAno(r.data)===monMesFiltro);
+    const sem=filtBase.filter(r=>r.status==='sem');
+    const div=filtBase.filter(r=>r.status==='diverg');
+    const ok=filtBase.filter(r=>r.status==='ok');
     const totSem=sem.reduce((s,r)=>s+(+r.icmsSTCorreto||0),0);
     const totDif=div.filter(r=>r.diferenca>0).reduce((s,r)=>s+(+r.diferenca||0),0);
     const totCob=totSem+totDif;
+
+    // Filtrar por status
     if(!['sem','diverg','ok','todos'].includes(monStatusFiltro))monStatusFiltro='todos';
-    const dados=monStatusFiltro==='sem'?sem:monStatusFiltro==='diverg'?div:monStatusFiltro==='ok'?ok:paResultados;
-    const tabBtn=(k,lbl,n,cor)=>`<button onclick="monStatusFiltro='${k}';renderMon()" style="flex:1;padding:8px 6px;border:none;background:${monStatusFiltro===k?'#1e3a8a':'transparent'};color:${monStatusFiltro===k?'#fff':cor};border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">${lbl} ${n}</button>`;
+    let dados=monStatusFiltro==='sem'?sem:monStatusFiltro==='diverg'?div:monStatusFiltro==='ok'?ok:filtBase;
+    // Incluir devoluções na lista (se filtro período "todos" ou bate o mês)
+    const devolFilt=todos.filter(r=>r.isDevolucao&&(monMesFiltro==='todos'||getMesAno(r.data)===monMesFiltro));
+    if(monStatusFiltro==='todos') dados=[...dados,...devolFilt];
+
+    // Paginação
+    const totalPag=Math.max(1,Math.ceil(dados.length/monPorPagina));
+    if(monPagina>totalPag)monPagina=totalPag;
+    const pagStart=(monPagina-1)*monPorPagina;
+    const pagDados=dados.slice(pagStart,pagStart+monPorPagina);
+
+    const tabBtn=(k,lbl,n,cor)=>`<button onclick="monStatusFiltro='${k}';monPagina=1;renderMon()" style="flex:1;padding:8px 6px;border:none;background:${monStatusFiltro===k?'#1e3a8a':'transparent'};color:${monStatusFiltro===k?'#fff':cor};border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">${lbl} ${n}</button>`;
     let h=`<style>
     .ap-tbl{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
     .ap-tbl thead th{background:#f1f5f9;color:#475569;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:10px 12px;text-align:left;border-bottom:2px solid #cbd5e1;white-space:nowrap}
@@ -2099,6 +2129,7 @@ function renderMon(){
     .ap-pill.sem{background:#fee2e2;color:#b91c1c}
     .ap-pill.div{background:#fef3c7;color:#92400e}
     .ap-pill.ok{background:#dcfce7;color:#166534}
+    .ap-pill.dev{background:#e0e7ff;color:#3730a3}
     .ap-arrow{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#f1f5f9;align-items:center;justify-content:center;font-size:10px;color:#64748b;transition:transform .2s}
     .ap-arrow.open{transform:rotate(90deg);background:#dbeafe;color:#1e40af}
     .ap-detail{background:#f8fafc;border-left:3px solid #1e40af}
@@ -2114,37 +2145,53 @@ function renderMon(){
     .ap-cmp .pos{color:#b91c1c;font-weight:700}
     .ap-cmp .neg{color:#92400e;font-weight:700}
     .ap-cmp .zero{color:#166534}
-    </style>
-    <div class="cards-grid" style="grid-template-columns:1fr 1fr">
-     <div class="card"><div class="card-head"><div class="card-icon blue">📊</div>Itens analisados</div>
+    </style>`;
+    // Mini-chart por mês
+    if(mesesKeys.length>1){
+      const maxVal=Math.max(...mesesKeys.map(k=>meses[k].vlSem+meses[k].vlDif),1);
+      h+='<div class="month-chart"><div class="month-chart-title">Valor a cobrar por período (clique para filtrar)</div><div class="bars">';
+      h+='<div class="bar-col '+(monMesFiltro==='todos'?'':'zero')+'" onclick="monMesFiltro=\'todos\';monPagina=1;renderMon()"><div class="bar" style="height:100%;background:var(--primary)"></div><div class="bar-lbl">Todos</div></div>';
+      mesesKeys.forEach(k=>{
+        const val=meses[k].vlSem+meses[k].vlDif;
+        const p=(val/maxVal)*100;
+        h+='<div class="bar-col '+(monMesFiltro===k?'':'zero')+'" onclick="monMesFiltro=\''+k+'\';monPagina=1;renderMon()"><div class="bar" style="height:'+Math.max(p,4)+'%"></div><div class="bar-lbl">'+k+' ('+meses[k].n+')</div></div>';
+      });
+      h+='</div></div>';
+    }
+    h+=`<div class="cards-grid" style="grid-template-columns:1fr 1fr">
+     <div class="card"><div class="card-head"><div class="card-icon blue">📊</div>Itens analisados${monMesFiltro!=='todos'?' — '+monMesFiltro:''}</div>
       <div style="display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:8px;margin:8px 0 12px">
-       ${tabBtn('todos','Todos',paResultados.length,'#475569')}
+       ${tabBtn('todos','Todos',filtBase.length,'#475569')}
        ${tabBtn('sem','⚠ Sem ret',sem.length,'#b91c1c')}
        ${tabBtn('diverg','⚠ Diverg',div.length,'#92400e')}
        ${tabBtn('ok','✓ OK',ok.length,'#166534')}
       </div>
-      <div class="card-row"><span class="label">Total</span><span class="value big">${paResultados.length}</span></div>
+      <div class="card-row"><span class="label">Total (excl. devoluções)</span><span class="value big">${filtBase.length}</span></div>
       <div class="card-row"><span class="label">⚠ Sem retenção</span><span class="value" style="color:#b91c1c">${sem.length}</span></div>
       <div class="card-row"><span class="label">⚠ MVA divergente</span><span class="value" style="color:#92400e">${div.length}</span></div>
       <div class="card-row"><span class="label">✓ Correto</span><span class="value" style="color:#166534">${ok.length}</span></div>
+      ${numDevol?'<div class="card-row"><span class="label">🔄 Devoluções (excluídas)</span><span class="value" style="color:#6366f1">'+numDevol+'</span></div>':''}
      </div>
-     <div class="card"><div class="card-head"><div class="card-icon amber">💰</div>Total a cobrar</div>
+     <div class="card"><div class="card-head"><div class="card-icon amber">💰</div>Total a cobrar${monMesFiltro!=='todos'?' — '+monMesFiltro:''}</div>
       <div class="card-row"><span class="label">⚠ Sem retenção</span><span class="value" style="color:#b91c1c">R$ ${fmt(totSem)}</span></div>
       <div class="card-row"><span class="label">⚠ Diferença MVA (positiva)</span><span class="value" style="color:#92400e">R$ ${fmt(totDif)}</span></div>
       <div class="card-row" style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:4px"><span class="label" style="font-weight:700">TOTAL</span><span class="value big" style="color:var(--danger)">R$ ${fmt(totCob)}</span></div>
      </div>
     </div>
     <table class="ap-tbl"><thead><tr><th style="width:30px"></th><th>Status</th><th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Reg</th><th>Descrição</th><th class="right">MVA</th><th class="right">ST Devido / Dif</th></tr></thead><tbody>`;
-    dados.forEach((r,i)=>{
-      const stCls=r.status==='sem'?'sem':r.status==='diverg'?'div':'ok';
-      const stTxt=r.status==='sem'?'⚠ SEM':r.status==='diverg'?'⚠ DIV':'✓ OK';
+    pagDados.forEach((r,i)=>{
+      const gi=pagStart+i;
+      const isDev=r.isDevolucao;
+      const stCls=isDev?'dev':r.status==='sem'?'sem':r.status==='diverg'?'div':'ok';
+      const stTxt=isDev?'🔄 DEV':r.status==='sem'?'⚠ SEM':r.status==='diverg'?'⚠ DIV':'✓ OK';
       const alertIcon=r.alertas&&r.alertas.length?'<span title="'+r.alertas.join('\n').replace(/"/g,'&quot;')+'" style="margin-left:4px;cursor:help;font-size:13px">🔍</span>':'';
-      const valor=r.status==='sem'?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
-      const valColor=r.status==='sem'?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
+      const valor=isDev?'—':r.status==='sem'?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
+      const valColor=isDev?'#6366f1':r.status==='sem'?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
       const mvaCmp=r.mvaUsada!=null?'<span style="color:#b91c1c;font-size:10px">'+pct(r.mvaUsada)+'</span> <span style="font-weight:700">'+pct(r.mvaCorreta)+'</span>':pct(r.mvaCorreta);
-      h+=`<tr class="main" onclick="(function(e,a){var d=document.getElementById('apd-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
-      h+=`<tr id="apd-${i}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
-       <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b></div></div>
+      const rowStyle=isDev?'opacity:0.6;':'';
+      h+=`<tr class="main" style="${rowStyle}cursor:pointer;border-bottom:1px solid #f1f5f9${gi%2===0?';background:#fafbfc':''}" onclick="(function(e,a){var d=document.getElementById('apd-${gi}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
+      h+=`<tr id="apd-${gi}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
+       <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}</div></div>
        <div class="ap-section"><h5>Cálculo da base</h5><div class="row">Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
        <div class="ap-section"><h5>Comparação Declarado × Correto</h5><table class="ap-cmp"><thead><tr><th></th><th>Declarado</th><th>Correto</th><th>Diferença</th></tr></thead><tbody>
         <tr><td>BC-ST</td><td>R$ ${fmt(r.bcSTDeclarado)}</td><td>R$ ${fmt(r.bcSTCorreta)}</td><td>—</td></tr>
@@ -2155,6 +2202,18 @@ function renderMon(){
       </td></tr>`;
     });
     h+='</tbody></table>';
+    // Paginação
+    if(totalPag>1){
+      h+='<div class="pg-bar">';
+      h+='<button class="pg-btn" onclick="monPagina=1;renderMon()" '+(monPagina<=1?'disabled':'')+'>«</button>';
+      h+='<button class="pg-btn" onclick="monPagina--;renderMon()" '+(monPagina<=1?'disabled':'')+'>‹</button>';
+      const pStart=Math.max(1,monPagina-2),pEnd=Math.min(totalPag,monPagina+2);
+      for(let p=pStart;p<=pEnd;p++){h+='<button class="pg-btn '+(p===monPagina?'active':'')+'" onclick="monPagina='+p+';renderMon()">'+p+'</button>';}
+      h+='<button class="pg-btn" onclick="monPagina++;renderMon()" '+(monPagina>=totalPag?'disabled':'')+'>›</button>';
+      h+='<button class="pg-btn" onclick="monPagina='+totalPag+';renderMon()" '+(monPagina>=totalPag?'disabled':'')+'>»</button>';
+      h+='<span class="pg-info">'+dados.length+' item(ns) · página '+monPagina+' de '+totalPag+'</span>';
+      h+='</div>';
+    }
     c.innerHTML=h;
     return;
   }

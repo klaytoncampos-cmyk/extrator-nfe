@@ -391,9 +391,22 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 </div>
 <div id="rel-content" style="display:none">
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-  <span style="font-size:14px;font-weight:700;color:var(--text)">🚕 Quebra de Benefício — Táxi</span>
+  <span id="rel-titulo" style="font-size:14px;font-weight:700;color:var(--text)">🚕 Quebra de Benefício — Táxi</span>
   <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="relVoltar()">← Voltar</button>
 </div>
+<div id="rel-subtipo-sel" style="display:flex;gap:12px;margin-bottom:16px">
+  <div onclick="relSelectSubTipo('denuncia')" style="flex:1;padding:16px 20px;background:var(--surface);border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:border .2s" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+    <div style="font-size:20px;margin-bottom:6px">📋</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">Denúncia Espontânea</div>
+    <div style="font-size:11px;color:var(--text-3);line-height:1.4">O contribuinte não fazia jus ao benefício. Apresenta denúncia espontânea antes de fiscalização (art. 138 CTN — sem multa).</div>
+  </div>
+  <div onclick="relSelectSubTipo('requerimento')" style="flex:1;padding:16px 20px;background:var(--surface);border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:border .2s" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
+    <div style="font-size:20px;margin-bottom:6px">📝</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">Requerimento de Recolhimento</div>
+    <div style="font-size:11px;color:var(--text-3);line-height:1.4">O contribuinte deseja vender o veículo antes do prazo legal. Solicita pagamento do ICMS para retirada da restrição.</div>
+  </div>
+</div>
+<div id="rel-upload-area" style="display:none">
 <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:14px 18px;border:2px dashed var(--border);border-radius:10px;background:var(--surface)" id="rel-drop" ondrop="relOnDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--primary)'" ondragleave="this.style.borderColor='var(--border)'">
   <span style="font-size:20px">📎</span>
   <span style="font-size:13px;color:var(--text-2)">Arraste o XML do veículo aqui, ou</span>
@@ -407,6 +420,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 </div>
 <div id="rel-analise" style="display:none"></div>
 <div id="rel-preview" style="display:none"></div>
+</div>
 </div>
 </section>
 </main>
@@ -2857,16 +2871,27 @@ selMon=function(m,el){
 
 /* ══════════ MÓDULO RELATÓRIOS ══════════ */
 let relTipo='';
+let relSubTipo='';
 let relDadosNFe=null;
 
 function relSelectTipo(tipo){
   relTipo=tipo;
   document.getElementById('rel-welcome').style.display='none';
   document.getElementById('rel-content').style.display='block';
+  document.getElementById('rel-subtipo-sel').style.display='flex';
+  document.getElementById('rel-upload-area').style.display='none';
   relLimpar();
+}
+function relSelectSubTipo(sub){
+  relSubTipo=sub;
+  document.getElementById('rel-subtipo-sel').style.display='none';
+  document.getElementById('rel-upload-area').style.display='block';
+  const lbl=sub==='denuncia'?'📋 Denúncia Espontânea':'📝 Requerimento de Recolhimento';
+  document.getElementById('rel-titulo').innerHTML='🚕 Táxi — '+lbl;
 }
 function relVoltar(){
   relTipo='';
+  relSubTipo='';
   document.getElementById('rel-welcome').style.display='block';
   document.getElementById('rel-content').style.display='none';
   relLimpar();
@@ -3063,7 +3088,33 @@ function relGerarPreview(){
   const fmt=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtDoc=v=>{if(!v)return'—';if(v.length===11)return v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');if(v.length===14)return v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');return v;};
 
-  const texto=`Trata-se de denúncia espontânea apresentada pelo contribuinte abaixo identificado, referente ao gozo irregular de isenção de ICMS na aquisição de veículo para utilização como táxi, nos termos do Convênio ICMS 38/2001. A denúncia é anterior ao início de qualquer procedimento administrativo ou medida de fiscalização relacionados à infração, atendendo ao art. 138, parágrafo único, do CTN.
+  const campos=`• Nome/Razão Social do contribuinte: ${d.destNome}
+• ${d.destDocTipo}: ${fmtDoc(d.destDoc)}
+• Número da Nota Fiscal: ${d.nNF}
+• Período da NF (mês/ano): ${d.periodo}
+• UF de origem: ${d.ufEmit}
+• ICMS desonerado (total da operação): R$ ${fmt(d.vICMSDeson)}
+• % da carga tributária devida à UF de origem (Conv. 51/2000): ${d.pctOrigem.toFixed(2)}%
+• % da carga tributária devida ao Maranhão (Conv. 51/2000): ${d.pctDestino.toFixed(2)}%
+• Valor de ICMS devido ao Maranhão: R$ ${fmt(d.icmsDevidoMA)}`;
+
+  let texto;
+  if(relSubTipo==='requerimento'){
+    texto=`Trata-se de requerimento de recolhimento de ICMS para fins de liberação de restrição sobre veículo adquirido com isenção fiscal nos termos do Convênio ICMS 38/2001.
+
+O contribuinte abaixo identificado solicita o pagamento do ICMS correspondente à parcela pertencente ao Estado do Maranhão, em razão da transferência de propriedade do veículo antes do término do prazo previsto na cláusula primeira do referido convênio.
+
+O Convênio ICMS 38/2001 condiciona a manutenção da isenção à permanência do veículo em nome do beneficiário pelo prazo estabelecido. A transferência antecipada torna devido o imposto originalmente dispensado.
+
+Nas operações com faturamento direto ao consumidor, o Convênio ICMS 51/2000 (cláusula primeira, §2º) atribui ao Estado de destino — onde a concessionária entrega o veículo — a parcela do ICMS relativa à operação subsequente. Os percentuais de repartição entre a UF de origem e o Maranhão foram apurados conforme as tabelas do referido convênio, considerando a alíquota do IPI incidente e a região geográfica do remetente.
+
+Das informações constantes da Nota Fiscal:
+
+${campos}
+
+O recolhimento do valor apurado viabilizará a retirada da restrição junto ao DETRAN/MA. Em anexo, o DARE para pagamento.`;
+  } else {
+    texto=`Trata-se de denúncia espontânea apresentada pelo contribuinte abaixo identificado, referente ao gozo irregular de isenção de ICMS na aquisição de veículo para utilização como táxi, nos termos do Convênio ICMS 38/2001. A denúncia é anterior ao início de qualquer procedimento administrativo ou medida de fiscalização relacionados à infração, atendendo ao art. 138, parágrafo único, do CTN.
 
 O Convênio ICMS 38/2001 concede isenção do ICMS nas saídas internas e interestaduais de automóveis novos de passageiros destinados a motoristas profissionais (taxistas), desde que cumpridas cumulativamente as condições de sua cláusula primeira. A cláusula quarta determina que a transmissão do veículo a pessoa que não satisfaça tais requisitos sujeita o transmitente ao pagamento do tributo dispensado. No presente caso, o contribuinte não fazia jus ao benefício, tornando devido o ICMS correspondente à parcela pertencente ao Estado do Maranhão.
 
@@ -3073,17 +3124,10 @@ Para que a denúncia espontânea produza o efeito de excluir a responsabilidade 
 
 Das informações constantes da Nota Fiscal objeto desta denúncia:
 
-• Nome/Razão Social do contribuinte: ${d.destNome}
-• ${d.destDocTipo}: ${fmtDoc(d.destDoc)}
-• Número da Nota Fiscal: ${d.nNF}
-• Período da NF (mês/ano): ${d.periodo}
-• UF de origem: ${d.ufEmit}
-• ICMS desonerado (total da operação): R$ ${fmt(d.vICMSDeson)}
-• % da carga tributária devida à UF de origem (Conv. 51/2000): ${d.pctOrigem.toFixed(2)}%
-• % da carga tributária devida ao Maranhão (Conv. 51/2000): ${d.pctDestino.toFixed(2)}%
-• Valor de ICMS devido ao Maranhão: R$ ${fmt(d.icmsDevidoMA)}
+${campos}
 
 Em anexo, o DARE para pagamento.`;
+  }
 
   // Preview HTML — split into paragraphs, group bullets
   const paragrafos=texto.split('\n\n');
@@ -3154,7 +3198,7 @@ ${relDadosNFe._textoPuro.split('\n\n').map(p=>{
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download='denuncia_taxi_NF'+d.nNF+'_'+d.destDoc+'.doc';
+  a.download=(relSubTipo==='requerimento'?'requerimento':'denuncia')+'_taxi_NF'+d.nNF+'_'+d.destDoc+'.doc';
   a.click();
   URL.revokeObjectURL(url);
 }

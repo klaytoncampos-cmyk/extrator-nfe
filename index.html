@@ -3104,9 +3104,10 @@ Em anexo, o DARE para pagamento.`;
   let h='<div style="margin-top:20px">';
   h+='<h3 style="font-size:14px;color:var(--text);margin-bottom:12px">📄 Preview do Relatório</h3>';
   h+='<div class="rel-preview-box" id="rel-preview-text">'+previewHTML+'</div>';
-  h+='<div style="display:flex;gap:10px">';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap">';
   h+='<button class="btn btn-primary" style="padding:10px 20px;font-size:13px" onclick="relCopiarTexto()">📋 Copiar texto</button>';
   h+='<button class="btn btn-secondary" style="padding:10px 20px;font-size:13px" onclick="relBaixarDocx()">📥 Baixar DOCX</button>';
+  h+='<button class="btn btn-primary" style="padding:10px 20px;font-size:13px;background:#059669" onclick="relMostrarDARE()">🏦 Preparar DARE</button>';
   h+='</div></div>';
 
   // Guardar texto puro para copiar
@@ -3156,6 +3157,70 @@ ${relDadosNFe._textoPuro.split('\n\n').map(p=>{
   a.download='denuncia_taxi_NF'+d.nNF+'_'+d.destDoc+'.doc';
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function relMostrarDARE(){
+  const d=relDadosNFe;if(!d)return;
+  const fmt=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const infCompl='Denuncia espontanea - Quebra de beneficio taxi Conv. 38/2001 - NF '+d.nNF+' - '+d.destNome;
+
+  const cpyBtn=(val,id)=>`<button id="dare-btn-${id}" onclick="navigator.clipboard.writeText('${val.replace(/'/g,"\\'")}').then(()=>{this.textContent='✓ Copiado';this.style.background='#dcfce7';this.style.color='#166534';setTimeout(()=>{this.textContent='📋 Copiar';this.style.background='';this.style.color='';},1500)})" style="padding:5px 14px;border:1.5px solid var(--primary);border-radius:6px;background:var(--primary-soft);font-size:12px;cursor:pointer;font-family:inherit;color:var(--primary);font-weight:600;white-space:nowrap">📋 Copiar</button>`;
+
+  let h='<div style="margin-top:24px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+  h+='<h3 style="font-size:14px;color:var(--text);margin:0">🏦 DARE — Passo a passo</h3>';
+  h+='<a href="https://sistemas1.sefaz.ma.gov.br/dare/" target="_blank" class="btn btn-primary" style="padding:8px 16px;font-size:12px;text-decoration:none">🌐 Abrir DARE da SEFAZ</a>';
+  h+='</div>';
+
+  h+='<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:13px">';
+
+  const step=(n,acao,valor,id,nota)=>{
+    let r='<tr style="border-bottom:1px solid var(--surface-2)">';
+    r+='<td style="padding:12px 16px;width:36px;text-align:center;font-weight:800;color:var(--primary);font-size:14px">'+n+'</td>';
+    r+='<td style="padding:12px 8px;color:var(--text-2);font-weight:600;width:180px">'+acao+'</td>';
+    r+='<td style="padding:12px 8px;font-weight:700;color:var(--text);font-family:\'Fira Code\',monospace;font-size:12px">'+valor+'</td>';
+    r+='<td style="padding:12px 12px;width:90px;text-align:right">'+(id?cpyBtn(valor,id):'<span style="font-size:11px;color:var(--text-3)">'+nota+'</span>')+'</td>';
+    r+='</tr>';
+    return r;
+  };
+
+  h+=step('1','Tipo do Contribuinte','Não Contribuinte',null,'selecionar');
+  h+=step('2',d.destDocTipo,d.destDoc,'cpf','');
+  h+=step('','','→ Clicar no tique ✔ ao lado para confirmar',null,'');
+  h+=step('3','UF','MA',null,'selecionar');
+  h+=step('4','Município','(selecionar o município)',null,'selecionar');
+  h+=step('5','Tipo de Tributos','ICMS',null,'selecionar');
+  h+=step('6','Código de Receita','103',null,'selecionar');
+  h+=step('7','Nº Docum. Origem',d.nNF,'nf','');
+  h+=step('8','Info Complementares',infCompl,'info','');
+  h+=step('','','→ Inserir documento:',null,'');
+  h+=step('9','Período Referência',d.periodo,'periodo','');
+  h+=step('10','Valor Principal',fmt(d.icmsDevidoMA),'valor','');
+
+  h+='</table></div></div>';
+
+  // Append ao preview
+  const dareDiv=document.getElementById('rel-dare-kit');
+  if(dareDiv) dareDiv.innerHTML=h;
+  else{
+    const div=document.createElement('div');
+    div.id='rel-dare-kit';
+    div.innerHTML=h;
+    document.getElementById('rel-preview').appendChild(div);
+  }
+  document.getElementById('rel-dare-kit').scrollIntoView({behavior:'smooth'});
+}
+
+function relCopiarCampo(id,btn){
+  const el=document.getElementById('dare-'+id);
+  if(!el)return;
+  const texto=el.textContent.trim();
+  navigator.clipboard.writeText(texto).then(()=>{
+    btn.textContent='✓';
+    setTimeout(()=>{btn.textContent='📋';},1500);
+  }).catch(()=>{});
 }
 
 </script></body></html>

@@ -134,6 +134,24 @@ html.dark .tt::after{background:#f1f5f9;color:#1e293b}
 
 /* ── Footer ── */
 .app-footer{text-align:center;padding:16px 24px;font-size:11px;color:var(--text-3);border-top:1px solid var(--border);margin-top:auto}
+
+/* ── Relatórios ── */
+.rel-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.rel-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px}
+.rel-card h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.rel-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid var(--surface-2)}
+.rel-row:last-child{border:none}
+.rel-row .lbl{color:var(--text-2)}
+.rel-row .val{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.rel-row .val.accent{color:var(--primary);font-size:15px}
+.rel-row .val.danger{color:var(--danger);font-size:15px}
+.rel-resultado{background:linear-gradient(135deg,var(--primary),var(--primary-2));border-radius:var(--radius);padding:20px 24px;color:#fff;margin-bottom:16px}
+.rel-resultado .lbl{font-size:12px;opacity:.8;text-transform:uppercase;letter-spacing:.04em}
+.rel-resultado .val{font-size:24px;font-weight:800;margin-top:4px}
+.rel-preview-box{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:32px 40px;font-family:Georgia,'Times New Roman',serif;font-size:14px;line-height:1.8;color:#1a1a1a;margin-bottom:16px;max-height:600px;overflow-y:auto}
+.rel-preview-box p{margin:0 0 16pt;text-align:justify}
+.rel-preview-box ul{margin:8pt 0 16pt;padding-left:24px;list-style:disc}
+.rel-preview-box li{margin-bottom:6pt}
 .app-footer a{color:var(--primary);text-decoration:none}
 
 /* ── Upload Summary ── */
@@ -304,6 +322,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div class="nav-item" onclick="navTo('filtrosnfe',this)"><span>🔽</span><span>Filtros da NF-e</span></div>
 <div class="nav-section">Análise</div>
 <div class="nav-item" onclick="navTo('preauditoria',this)"><span>🔎</span><span>Monitoramento</span></div>
+<div class="nav-item" onclick="navTo('relatorios',this)"><span>📝</span><span>Relatórios</span></div>
 </aside>
 
 <main>
@@ -357,6 +376,39 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 </div>
 <div id="mon-welcome"></div>
 <div id="mon-results"></div></section>
+
+<section class="section" id="sec-relatorios">
+<h1>Relatórios</h1>
+<p class="subtitle">Geração de relatórios a partir de XMLs individuais</p>
+<div id="rel-welcome">
+<div class="mon-welcome">
+  <div class="mon-wcard" onclick="relSelectTipo('taxi')">
+    <div class="wicon">🚕</div>
+    <div class="wtitle">Quebra de Benefício — Táxi</div>
+    <div class="wdesc">Conv. 38/2001 + Conv. 51/00. Calcula a parcela de ICMS desonerado devida ao MA quando o contribuinte perde o direito ao benefício fiscal de isenção para táxi.</div>
+  </div>
+</div>
+</div>
+<div id="rel-content" style="display:none">
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+  <span style="font-size:14px;font-weight:700;color:var(--text)">🚕 Quebra de Benefício — Táxi</span>
+  <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="relVoltar()">← Voltar</button>
+</div>
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:14px 18px;border:2px dashed var(--border);border-radius:10px;background:var(--surface)" id="rel-drop" ondrop="relOnDrop(event)" ondragover="event.preventDefault();this.style.borderColor='var(--primary)'" ondragleave="this.style.borderColor='var(--border)'">
+  <span style="font-size:20px">📎</span>
+  <span style="font-size:13px;color:var(--text-2)">Arraste o XML do veículo aqui, ou</span>
+  <button class="btn btn-primary" style="font-size:12px;padding:7px 14px" onclick="document.getElementById('rel-file-input').click()">Selecionar arquivo</button>
+  <button class="btn btn-secondary" style="font-size:12px;padding:7px 14px" onclick="relTogglePaste()">Colar XML</button>
+  <input type="file" id="rel-file-input" accept=".xml,.zip" style="display:none" onchange="relOnFile(this.files)">
+</div>
+<div id="rel-paste-area" style="display:none;margin-bottom:12px">
+  <textarea id="rel-paste-text" style="width:100%;height:120px;font-family:'Fira Code',monospace;font-size:11px;padding:10px;border:1.5px solid var(--border);border-radius:8px;resize:vertical" placeholder="Cole o conteúdo XML ou HTML aqui..."></textarea>
+  <button class="btn btn-primary" style="font-size:12px;padding:7px 14px;margin-top:6px" onclick="relProcessPaste()">Processar</button>
+</div>
+<div id="rel-analise" style="display:none"></div>
+<div id="rel-preview" style="display:none"></div>
+</div>
+</section>
 </main>
 </div>
 <footer class="app-footer">Radar ST · v3.0 · Atualizado em Abril/2026</footer>
@@ -2802,5 +2854,308 @@ selMon=function(m,el){
   _origSelMon(m,el);
   document.getElementById('mon-welcome').style.display='none';
 };
+
+/* ══════════ MÓDULO RELATÓRIOS ══════════ */
+let relTipo='';
+let relDadosNFe=null;
+
+function relSelectTipo(tipo){
+  relTipo=tipo;
+  document.getElementById('rel-welcome').style.display='none';
+  document.getElementById('rel-content').style.display='block';
+  relLimpar();
+}
+function relVoltar(){
+  relTipo='';
+  document.getElementById('rel-welcome').style.display='block';
+  document.getElementById('rel-content').style.display='none';
+  relLimpar();
+}
+function relLimpar(){
+  relDadosNFe=null;
+  document.getElementById('rel-analise').style.display='none';
+  document.getElementById('rel-analise').innerHTML='';
+  document.getElementById('rel-preview').style.display='none';
+  document.getElementById('rel-preview').innerHTML='';
+  document.getElementById('rel-paste-area').style.display='none';
+  document.getElementById('rel-file-input').value='';
+}
+function relTogglePaste(){
+  const a=document.getElementById('rel-paste-area');
+  a.style.display=a.style.display==='none'?'block':'none';
+}
+function relOnDrop(e){
+  e.preventDefault();
+  e.currentTarget.style.borderColor='var(--border)';
+  if(e.dataTransfer.files.length) relOnFile(e.dataTransfer.files);
+}
+function relOnFile(files){
+  if(!files||!files.length) return;
+  const f=files[0];
+  const reader=new FileReader();
+  reader.onload=()=>relProcessXML(reader.result);
+  reader.readAsText(f);
+}
+function relProcessPaste(){
+  let txt=document.getElementById('rel-paste-text').value.trim();
+  if(!txt){alert('Cole o conteúdo XML primeiro.');return;}
+  // Se for HTML, tentar extrair XML de dentro
+  if(txt.includes('<html')||txt.includes('<HTML')||txt.includes('<!DOCTYPE')){
+    const m=txt.match(/<\?xml[\s\S]*?<\/nfeProc>/i)||txt.match(/<nfeProc[\s\S]*?<\/nfeProc>/i)||txt.match(/<NFe[\s\S]*?<\/NFe>/i);
+    if(m) txt=m[0];
+    else{alert('Não foi possível encontrar XML de NF-e no conteúdo colado.');return;}
+  }
+  relProcessXML(txt);
+}
+
+function relProcessXML(xmlStr){
+  try{
+    const parser=new DOMParser();
+    const doc=parser.parseFromString(xmlStr,'text/xml');
+    if(doc.querySelector('parsererror')){alert('XML inválido.');return;}
+
+    const ns='http://www.portalfiscal.inf.br/nfe';
+    const g=(parent,tag)=>{const el=parent?parent.getElementsByTagNameNS(ns,tag)[0]:null;return el?(el.textContent||'').trim():'';};
+    const n=(parent,tag)=>parseFloat(g(parent,tag))||0;
+
+    const ide=doc.getElementsByTagNameNS(ns,'ide')[0];
+    const emit=doc.getElementsByTagNameNS(ns,'emit')[0];
+    const dest=doc.getElementsByTagNameNS(ns,'dest')[0];
+    const tot=doc.getElementsByTagNameNS(ns,'ICMSTot')[0];
+    const det=doc.getElementsByTagNameNS(ns,'det')[0];
+    const prod=det?det.getElementsByTagNameNS(ns,'prod')[0]:null;
+    const veicProd=prod?prod.getElementsByTagNameNS(ns,'veicProd')[0]:null;
+    const imp=det?det.getElementsByTagNameNS(ns,'imposto')[0]:null;
+    const infAdic=doc.getElementsByTagNameNS(ns,'infAdic')[0];
+
+    // IPI
+    let pIPI=0,cstIPI='';
+    if(imp){
+      const ipiG=imp.getElementsByTagNameNS(ns,'IPI')[0];
+      if(ipiG){
+        for(const c of ipiG.children){
+          const gt=(t)=>{const e=c.getElementsByTagNameNS(ns,t)[0];return e?(e.textContent||'').trim():'';};
+          if(!cstIPI) cstIPI=gt('CST');
+          const p=parseFloat(gt('pIPI'))||0;
+          if(p) pIPI=p;
+        }
+      }
+    }
+    const ipiIsento=['50','51','52','53','54','55'].includes(cstIPI)&&pIPI===0;
+
+    // ICMS orig
+    let origICMS='';
+    if(imp){
+      const icmsG=imp.getElementsByTagNameNS(ns,'ICMS')[0];
+      if(icmsG){for(const c of icmsG.children){const o=c.getElementsByTagNameNS(ns,'orig')[0];if(o)origICMS=o.textContent.trim();}}
+    }
+
+    const enderEmit=emit?emit.getElementsByTagNameNS(ns,'enderEmit')[0]:null;
+    const ufEmit=enderEmit?g(enderEmit,'UF'):'';
+    const dhEmi=g(ide,'dhEmi')||g(ide,'dEmi');
+    const dataStr=dhEmi?dhEmi.substring(0,10):'';
+    const periodo=dhEmi?dhEmi.substring(5,7)+'/'+dhEmi.substring(0,4):'';
+
+    const destCPF=g(dest,'CPF');
+    const destCNPJ=g(dest,'CNPJ');
+    const destDoc=destCPF||destCNPJ;
+
+    const vICMSDeson=n(tot,'vICMSDeson');
+    const vNF=n(tot,'vNF');
+    const vProd=n(tot,'vProd');
+
+    // Conv. 51 repartição — IPI efetivo (taxi = isento = 0%)
+    const pIPIEfetivo=(ipiIsento||pIPI===0)?0:pIPI;
+    const conv51=getCoefConv51(pIPIEfetivo,ufEmit);
+
+    // Região
+    const isLinhaI=UF_SUL_SUDESTE_VEIC.has(ufEmit);
+    const linhaDesc=isLinhaI?'I (S/SE exceto ES → N/NE/CO/ES)':'II (N/NE/CO/ES → qualquer)';
+    const regiao=isLinhaI?'Sul/Sudeste':'N/NE/CO/ES';
+
+    const pctOrigem=conv51.origPct;
+    const pctDestino=100-pctOrigem;
+    const icmsDevidoMA=vICMSDeson*(pctDestino/100);
+    const icmsOrigem=vICMSDeson*(pctOrigem/100);
+
+    relDadosNFe={
+      nNF:g(ide,'nNF'), serie:g(ide,'serie'), dataStr, periodo, dhEmi,
+      emitNome:g(emit,'xNome'), emitCNPJ:g(emit,'CNPJ'), ufEmit,
+      destNome:g(dest,'xNome'), destDoc, destDocTipo:destCPF?'CPF':'CNPJ',
+      xProd:prod?g(prod,'xProd'):'', NCM:prod?g(prod,'NCM'):'', CEST:prod?g(prod,'CEST'):'',
+      chassi:veicProd?g(veicProd,'chassi'):'',
+      xCor:veicProd?g(veicProd,'xCor'):'',
+      cilin:veicProd?g(veicProd,'cilin'):'',
+      anoFab:veicProd?g(veicProd,'anoFab'):'',
+      anoMod:veicProd?g(veicProd,'anoMod'):'',
+      vProd, vNF, pIPI, pIPIEfetivo, ipiIsento, cstIPI, origICMS,
+      vICMSDeson,
+      linhaConv51:isLinhaI?'I':'II', linhaDesc, regiao,
+      pctOrigem, pctDestino, conv51interpolado:conv51.interpolado,
+      icmsOrigem, icmsDevidoMA,
+      infCpl:infAdic?g(infAdic,'infCpl'):'',
+    };
+
+    relRenderAnalise();
+  }catch(e){
+    alert('Erro ao processar XML: '+e.message);
+    console.error(e);
+  }
+}
+
+function relRenderAnalise(){
+  const d=relDadosNFe;if(!d)return;
+  const fmt=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDoc=v=>{if(!v)return'—';if(v.length===11)return v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');if(v.length===14)return v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');return v;};
+
+  let h='<div class="rel-grid">';
+
+  // Card 1: Veículo
+  h+='<div class="rel-card"><h3>🚗 Dados do Veículo</h3>';
+  h+='<div class="rel-row"><span class="lbl">Modelo</span><span class="val">'+(d.xProd||'—')+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Chassi</span><span class="val" style="font-family:monospace">'+(d.chassi||'—')+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Cor</span><span class="val">'+(d.xCor||'—')+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Cilindrada</span><span class="val">'+(d.cilin?d.cilin+'cc':'—')+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Ano Fab/Mod</span><span class="val">'+(d.anoFab||'—')+'/'+(d.anoMod||'—')+'</span></div>';
+  h+='</div>';
+
+  // Card 2: NF-e
+  h+='<div class="rel-card"><h3>📄 Dados da NF-e</h3>';
+  h+='<div class="rel-row"><span class="lbl">NF-e</span><span class="val">'+d.nNF+' · Série '+d.serie+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Data</span><span class="val">'+d.periodo+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Emitente</span><span class="val">'+d.emitNome.substring(0,30)+' ('+d.ufEmit+')</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Destinatário</span><span class="val">'+d.destNome.substring(0,30)+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">'+d.destDocTipo+'</span><span class="val">'+fmtDoc(d.destDoc)+'</span></div>';
+  h+='</div>';
+
+  // Card 3: Dados Fiscais
+  h+='<div class="rel-card"><h3>💰 Dados Fiscais</h3>';
+  h+='<div class="rel-row"><span class="lbl">Valor Produto</span><span class="val">R$ '+fmt(d.vProd)+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Valor NF</span><span class="val">R$ '+fmt(d.vNF)+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">IPI</span><span class="val">'+(d.ipiIsento?'Isento (CST '+d.cstIPI+')':d.pIPI+'%')+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">ICMS Desonerado</span><span class="val danger">R$ '+fmt(d.vICMSDeson)+'</span></div>';
+  h+='</div>';
+
+  // Card 4: Repartição
+  h+='<div class="rel-card"><h3>📊 Repartição Conv. 51/2000</h3>';
+  h+='<div class="rel-row"><span class="lbl">Emitente</span><span class="val">'+d.ufEmit+' ('+d.regiao+')</span></div>';
+  h+='<div class="rel-row"><span class="lbl">IPI efetivo</span><span class="val">'+d.pIPIEfetivo+'%'+(d.ipiIsento?' (isento)':'')+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">Linha</span><span class="val">'+d.linhaDesc+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">% Origem ('+d.ufEmit+')</span><span class="val">'+d.pctOrigem.toFixed(2)+'%</span></div>';
+  h+='<div class="rel-row"><span class="lbl">% Destino (MA)</span><span class="val accent">'+d.pctDestino.toFixed(2)+'%</span></div>';
+  h+='<div class="rel-row"><span class="lbl">ICMS Origem</span><span class="val">R$ '+fmt(d.icmsOrigem)+'</span></div>';
+  h+='<div class="rel-row"><span class="lbl">ICMS devido ao MA</span><span class="val danger">R$ '+fmt(d.icmsDevidoMA)+'</span></div>';
+  h+='</div>';
+  h+='</div>';
+
+  // Resultado destaque
+  h+='<div class="rel-resultado"><div class="lbl">Valor de ICMS devido ao Estado do Maranhão</div><div class="val">R$ '+fmt(d.icmsDevidoMA)+'</div></div>';
+
+  // Botão gerar relatório
+  h+='<button class="btn btn-primary" style="padding:12px 28px;font-size:14px" onclick="relGerarPreview()">📄 Gerar Relatório</button>';
+
+  document.getElementById('rel-analise').innerHTML=h;
+  document.getElementById('rel-analise').style.display='block';
+}
+
+function relGerarPreview(){
+  const d=relDadosNFe;if(!d)return;
+  const fmt=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDoc=v=>{if(!v)return'—';if(v.length===11)return v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4');if(v.length===14)return v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');return v;};
+
+  const texto=`Trata-se de denúncia espontânea apresentada pelo contribuinte abaixo identificado, referente ao gozo irregular de isenção de ICMS na aquisição de veículo para utilização como táxi, nos termos do Convênio ICMS 38/2001. A denúncia é anterior ao início de qualquer procedimento administrativo ou medida de fiscalização relacionados à infração, atendendo ao art. 138, parágrafo único, do CTN.
+
+O Convênio ICMS 38/2001 concede isenção do ICMS nas saídas internas e interestaduais de automóveis novos de passageiros destinados a motoristas profissionais (taxistas), desde que cumpridas cumulativamente as condições de sua cláusula primeira. A cláusula quarta determina que a transmissão do veículo a pessoa que não satisfaça tais requisitos sujeita o transmitente ao pagamento do tributo dispensado. No presente caso, o contribuinte não fazia jus ao benefício, tornando devido o ICMS correspondente à parcela pertencente ao Estado do Maranhão.
+
+Nas operações com faturamento direto ao consumidor, o Convênio ICMS 51/2000 (cláusula primeira, §2º) atribui ao Estado de destino — onde a concessionária entrega o veículo — a parcela do ICMS relativa à operação subsequente. Os percentuais de repartição entre a UF de origem e o Maranhão foram apurados conforme as tabelas do referido convênio, considerando a alíquota do IPI incidente e a região geográfica do remetente.
+
+Para que a denúncia espontânea produza o efeito de excluir a responsabilidade do infrator, nos termos do art. 138 do CTN, é necessário o pagamento integral do tributo devido acrescido dos juros de mora (Súmula 360/STJ — multa de mora não é exigível).
+
+Das informações constantes da Nota Fiscal objeto desta denúncia:
+
+• Nome/Razão Social do contribuinte: ${d.destNome}
+• ${d.destDocTipo}: ${fmtDoc(d.destDoc)}
+• Número da Nota Fiscal: ${d.nNF}
+• Período da NF (mês/ano): ${d.periodo}
+• UF de origem: ${d.ufEmit}
+• ICMS desonerado (total da operação): R$ ${fmt(d.vICMSDeson)}
+• % da carga tributária devida à UF de origem (Conv. 51/2000): ${d.pctOrigem.toFixed(2)}%
+• % da carga tributária devida ao Maranhão (Conv. 51/2000): ${d.pctDestino.toFixed(2)}%
+• Valor de ICMS devido ao Maranhão: R$ ${fmt(d.icmsDevidoMA)}
+
+Em anexo, o DARE para pagamento.`;
+
+  // Preview HTML — split into paragraphs, group bullets
+  const paragrafos=texto.split('\n\n');
+  let previewHTML='';
+  for(const p of paragrafos){
+    const linhas=p.split('\n');
+    const bullets=linhas.filter(l=>l.startsWith('• '));
+    if(bullets.length>0){
+      // Pode ter texto antes dos bullets
+      const pre=linhas.filter(l=>!l.startsWith('• ')).join(' ').trim();
+      if(pre) previewHTML+='<p>'+pre+'</p>';
+      previewHTML+='<ul>'+bullets.map(b=>'<li>'+b.substring(2)+'</li>').join('')+'</ul>';
+    } else {
+      previewHTML+='<p>'+p.replace(/\n/g,' ')+'</p>';
+    }
+  }
+
+  let h='<div style="margin-top:20px">';
+  h+='<h3 style="font-size:14px;color:var(--text);margin-bottom:12px">📄 Preview do Relatório</h3>';
+  h+='<div class="rel-preview-box" id="rel-preview-text">'+previewHTML+'</div>';
+  h+='<div style="display:flex;gap:10px">';
+  h+='<button class="btn btn-primary" style="padding:10px 20px;font-size:13px" onclick="relCopiarTexto()">📋 Copiar texto</button>';
+  h+='<button class="btn btn-secondary" style="padding:10px 20px;font-size:13px" onclick="relBaixarDocx()">📥 Baixar DOCX</button>';
+  h+='</div></div>';
+
+  // Guardar texto puro para copiar
+  relDadosNFe._textoPuro=texto;
+
+  document.getElementById('rel-preview').innerHTML=h;
+  document.getElementById('rel-preview').style.display='block';
+  document.getElementById('rel-preview').scrollIntoView({behavior:'smooth'});
+}
+
+function relCopiarTexto(){
+  if(!relDadosNFe||!relDadosNFe._textoPuro)return;
+  navigator.clipboard.writeText(relDadosNFe._textoPuro).then(()=>{
+    const btn=event.target;btn.textContent='✓ Copiado!';
+    setTimeout(()=>{btn.textContent='📋 Copiar texto';},2000);
+  }).catch(()=>alert('Não foi possível copiar. Selecione o texto manualmente.'));
+}
+
+async function relBaixarDocx(){
+  if(!relDadosNFe||!relDadosNFe._textoPuro)return;
+  const d=relDadosNFe;
+  const fmt=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // Gerar DOCX simples via Blob (HTML → DOCX via mso-application)
+  const htmlDoc=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><style>
+body{font-family:Calibri,sans-serif;font-size:12pt;line-height:1.6;margin:2cm 2.5cm}
+p{margin:0 0 12pt;text-align:justify}
+ul{margin:6pt 0 12pt 24pt}
+li{margin-bottom:4pt}
+</style></head><body>
+${relDadosNFe._textoPuro.split('\n\n').map(p=>{
+  const linhas=p.split('\n');
+  const bullets=linhas.filter(l=>l.startsWith('• '));
+  if(bullets.length>0){
+    const pre=linhas.filter(l=>!l.startsWith('• ')).join(' ').trim();
+    return (pre?'<p>'+pre+'</p>':'')+'<ul>'+bullets.map(b=>'<li>'+b.substring(2)+'</li>').join('')+'</ul>';
+  }
+  return '<p>'+p.replace(/\n/g,' ')+'</p>';
+}).join('')}
+</body></html>`;
+
+  const blob=new Blob([htmlDoc],{type:'application/msword'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='denuncia_taxi_NF'+d.nNF+'_'+d.destDoc+'.doc';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 </script></body></html>

@@ -371,6 +371,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <section class="section" id="sec-preauditoria"><h1>Monitoramento</h1><p class="subtitle">Análise de conformidade ICMS-ST sobre os XMLs carregados</p><div class="mon-toolbar">
 <button class="mon-mod-btn" onclick="selMon('autopecas',this)">🔧 Autopeças ICMS-ST</button>
 <button class="mon-mod-btn" onclick="selMon('veiculos',this)">🚗 Veículos ICMS-ST</button>
+<button class="mon-mod-btn" onclick="selMon('celulares',this)">📱 Celulares ICMS-ST</button>
 <button class="mon-run" id="mon-run-btn" onclick="execMon()">▶ Executar monitoramento</button>
 <button class="btn btn-primary" id="mon-export-btn" onclick="exportarMon()" style="display:none;margin-left:8px;padding:9px 18px;font-size:13px">⬇️ Exportar monitoramento</button>
 </div>
@@ -2327,22 +2328,212 @@ async function exportarPAVeiculos(){
 
 
 
+/* ═══════════════════════════════════════════════════════════
+   MÓDULO: CELULARES ICMS-ST (Conv. 213/17 + Anexo XX Conv. 142/18)
+   MVA original: 9% | Alíquota interna MA: variável por data
+   ════════════════════════════════════════════════════════════ */
+
+let paCelResultados=[];
+
+function isCESTCelular(cest){
+  if(!cest)return false;
+  const c=cest.replace(/\./g,'');
+  return c.startsWith('2105300')||c.startsWith('2105301')||c==='2106300'||c==='2106400';
+}
+function isNCMCelular(ncm){
+  if(!ncm)return false;
+  const n=ncm.replace(/\./g,'');
+  return n.startsWith('851713')||n.startsWith('851714')||n.startsWith('851712')||n.startsWith('852352');
+}
+
+const CELULAR_USADO_KEYWORDS=['usado','seminovo','semi novo','semi-novo','recondicionado','refurbished','remanufaturado','segunda mao','segunda mão','buyback'];
+function isCelularUsado(xProd){
+  const t=(xProd||'').toLowerCase();
+  return CELULAR_USADO_KEYWORDS.some(k=>t.includes(k));
+}
+
+function executarPreAuditoriaCelulares(){
+  if(!todasNotas.length){alert('Carregue arquivos XML primeiro.');return;}
+  const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
+  paCelResultados=[];
+
+  const MVA_ORIGINAL=0.09;
+
+  todosItens.forEach(item=>{
+    const nota=notaMap.get(item.chave);
+    if(!nota)return;
+    if(nota.ufEmissao==='MA')return;
+
+    // Filtrar: CEST de celular OU NCM de celular
+    const matchCEST=isCESTCelular(item.CEST);
+    const matchNCM=isNCMCelular(item.NCM);
+    if(!matchCEST && !matchNCM)return;
+
+    const dataStr=nota.data||'';
+    const ufEmit=nota.ufEmissao||'';
+    const orig=item.orig||'0';
+    const crt=nota.emitCRT||'3';
+    const isSimples=crt==='1';
+
+    // Detectar celular usado
+    const isUsado=isCelularUsado(item.xProd);
+
+    // Detectar devolução
+    const isDevolucao=item.CFOP&&['1411','2411','5411','6411','1410','2410'].includes(item.CFOP.trim());
+
+    // Alíquotas
+    const aliqInter=getAliqInter(ufEmit,orig);
+    const aliqIntra=getAliqIntraMA(dataStr);
+
+    // MVA
+    let mvaCorreta;
+    if(isSimples){
+      mvaCorreta=MVA_ORIGINAL;
+    } else {
+      mvaCorreta=((1+MVA_ORIGINAL)*(1-aliqInter)/(1-aliqIntra))-1;
+    }
+
+    // Base pré-MVA (rateio frete/seguro/outros)
+    const vProd=item.vProd||0;
+    const ipiItem=item.ipi||0;
+    const nItens=todosItens.filter(it=>it.chave===item.chave).length||1;
+    const freteRat=((nota.vFrete||0)/nItens);
+    const seguroRat=((nota.vSeg||0)/nItens);
+    const outrosRat=((nota.vOutro||0)/nItens);
+    const basePreMVA=vProd+ipiItem+freteRat+seguroRat+outrosRat;
+
+    // BC-ST e ST corretos
+    const bcSTCorreta=basePreMVA*(1+mvaCorreta);
+    const icmsProprioCorreto=isSimples?(basePreMVA*aliqIntra*0.7):(item.icms||basePreMVA*aliqInter);
+    const icmsSTCorreto=Math.max(0,bcSTCorreta*aliqIntra-icmsProprioCorreto);
+
+    // Declarado
+    const bcSTDeclarado=item.bcST||0;
+    const stDeclarado=item.icmsST||0;
+
+    // Determinar status
+    let status='ok';
+    let diferenca=0;
+    const alertas=[];
+
+    if(!matchCEST && matchNCM) alertas.push('CEST ausente — NCM '+item.NCM+' corresponde a celular mas CEST não informado');
+
+    if(isUsado){
+      status='ok';
+      alertas.push('Celular usado/recondicionado — ST não aplicável');
+    } else if(stDeclarado===0 && bcSTDeclarado===0){
+      status='sem';
+      diferenca=icmsSTCorreto;
+      alertas.push('Omissão de ST — CST '+item.CST+' sem retenção em operação sujeita a ST (Conv. 213/17)');
+      if(item.CFOP && !['6401','6403'].includes(item.CFOP.trim())){
+        alertas.push('CFOP '+item.CFOP+' — esperado 6401 ou 6403 para operação com ST');
+      }
+    } else {
+      diferenca=icmsSTCorreto-stDeclarado;
+      if(Math.abs(diferenca)>5) status='diverg';
+      if(status==='diverg'){
+        alertas.push('ST divergente — declarado R$'+stDeclarado.toLocaleString('pt-BR',{minimumFractionDigits:2})+', esperado R$'+icmsSTCorreto.toLocaleString('pt-BR',{minimumFractionDigits:2})+' (diferença: '+(diferenca>0?'+':'')+diferenca.toLocaleString('pt-BR',{minimumFractionDigits:2})+')');
+      }
+      // Verificar MVA declarada
+      if(bcSTDeclarado>0 && basePreMVA>0){
+        const mvaDecl=(bcSTDeclarado/basePreMVA)-1;
+        if(Math.abs(mvaDecl-mvaCorreta)>0.01){
+          alertas.push('MVA divergente — declarada '+(mvaDecl*100).toFixed(2)+'%, esperada '+(mvaCorreta*100).toFixed(2)+'%');
+        }
+      }
+    }
+
+    // Verificar alíquota inter suspeita
+    const pICMSDecl=item.pICMS||0;
+    if(pICMSDecl>0 && Math.abs(pICMSDecl/100-aliqInter)>0.005 && !isSimples){
+      alertas.push('Alíquota interestadual suspeita — declarada '+pICMSDecl+'%, esperada '+(aliqInter*100).toFixed(0)+'% ('+ufEmit+'→MA, orig='+orig+')');
+    }
+
+    paCelResultados.push({
+      chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
+      data:dataStr, ufEmit:ufEmit,
+      emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ, emitCRT:crt,
+      nitem:item.nitem, cProd:item.cProd, xProd:item.xProd,
+      NCM:item.NCM, CEST:item.CEST, CFOP:item.CFOP, orig:orig,
+      vProd:vProd, ipiItem:ipiItem,
+      freteRat, seguroRat, outrosRat,
+      icmsItem:item.icms||0,
+      basePreMVA, regime:isSimples?'SN':'Normal',
+      aliqInter, aliqIntra,
+      bcSTDeclarado, stDeclarado,
+      mvaUsada:mvaCorreta,
+      mvaCorreta, bcSTCorreta, icmsProprioCorreto, icmsSTCorreto,
+      status, diferenca, alertas, isDevolucao,
+      isUsado:isUsado,
+      matchCEST:matchCEST, matchNCM:matchNCM,
+    });
+  });
+
+  const ordemStatus={sem:0,diverg:1,ok:2};
+  paCelResultados.sort((a,b)=>ordemStatus[a.status]-ordemStatus[b.status]||(a.data||'').localeCompare(b.data||''));
+}
+
+async function exportarPACelulares(){
+  if(!paCelResultados||!paCelResultados.length){alert('Nenhum dado de celulares para exportar');return;}
+  const hoje=new Date().toLocaleDateString('pt-BR');
+  const wb=new ExcelJS.Workbook();
+  wb.creator='Radar ST';
+  const r2=v=>Math.round((+v||0)*100)/100;
+  const resultados=paCelResultados;
+
+  {const hd=['Status','Período','NF-e','Série','Chave','UF Emit.','CNPJ Emit.','Emitente','CRT',
+    'Item','Descrição','NCM','CEST','CFOP','Origem',
+    'Vl.Produto','IPI','Base Pré-MVA','ALQ Inter(%)','ALQ Intra(%)',
+    'MVA Correta(%)','BC-ST Correto','ICMS Próprio','ICMS-ST Correto',
+    'BC-ST Declarado','ST Declarado','Diferença',
+    'Usado','Devolução','Alertas'];
+  const ws=wb.addWorksheet('Análise Celulares',{views:[{state:'frozen',ySplit:4}]});
+  xlTitle(ws,'📱 PRÉ-AUDITORIA CELULARES ICMS-ST (Conv. 213/17)',hd.length,1);
+  xlSubtitle(ws,resultados.length+' item(ns) · MVA original 9% · Gerado em '+hoje,hd.length,2);
+  ws.getRow(3).height=4;
+  xlHeaderRow(ws,hd,4);
+  resultados.forEach((r,i)=>{
+    const rn=5+i;const z=i%2===1;
+    const stLabel=r.isUsado?'Usado':r.isDevolucao?'Devolução':r.status==='sem'?'Sem retenção':r.status==='diverg'?'Divergente':'OK';
+    const row=[stLabel,r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT==='1'?'SN':'RN',
+      r.nitem,r.xProd,r.NCM,r.CEST||'',r.CFOP||'',r.orig,
+      r2(r.vProd),r2(r.ipiItem),r2(r.basePreMVA),r2(r.aliqInter*100),r2(r.aliqIntra*100),
+      r2(r.mvaCorreta*100),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
+      r2(r.bcSTDeclarado),r2(r.stDeclarado),r2(r.diferenca),
+      r.isUsado?'Sim':'Não',r.isDevolucao?'Sim':'Não',r.alertas.join(' | ')];
+    xlDataRow(ws,row,rn,z);
+    const isOk=r.status==='ok'&&!r.isUsado&&!r.isDevolucao;
+    xlStatusCell(ws.getCell(rn,1),isOk);
+    [16,17,18,22,23,24,25,26].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+    xlDivCell(ws.getCell(rn,27),r.diferenca);
+    if(r.isUsado) ws.getCell(rn,28).fill=XL.fill('E0E7FF');
+  });
+  xlAutoWidth(ws,[14,10,10,6,48,6,16,30,6,6,40,12,12,6,4,14,12,14,8,8,10,14,14,14,14,14,14,8,8,50]);
+  ws.autoFilter={from:{row:4,column:1},to:{row:4+resultados.length,column:hd.length}};}
+
+  await xlSave(wb,'pre_auditoria_celulares_'+hoje+'.xlsx');
+}
+
+
 let monModulo='',monMesFiltro='todos',monStatusFiltro='todos',monBusca='',monPagina=1,monPorPagina=50;
 function selMon(m,el){monModulo=m;document.querySelectorAll('.mon-mod-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');document.getElementById('mon-results').innerHTML='';const eb=document.getElementById('mon-export-btn');if(eb)eb.style.display='none';}
-function execMon(){if(!monModulo){alert('Selecione um módulo (Autopeças ou Veículos) primeiro');return;}if(!todasNotas.length){alert('Carregue XMLs primeiro');return;}if(monModulo==='veiculos')executarPreAuditoriaVeiculos();else executarPreAuditoria();renderMon();}
+function execMon(){if(!monModulo){alert('Selecione um módulo primeiro');return;}if(!todasNotas.length){alert('Carregue XMLs primeiro');return;}if(monModulo==='veiculos')executarPreAuditoriaVeiculos();else if(monModulo==='celulares')executarPreAuditoriaCelulares();else executarPreAuditoria();renderMon();}
 function fmt(v){return(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function getMesAno(d){if(!d)return'?';const[a,m]=d.split('-');const meses=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];return meses[parseInt(m)-1]+'/'+a;}
 function renderMon(){
   const fmt=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  if(monModulo==='autopecas'){
+  if(monModulo==='autopecas'||monModulo==='celulares'){
+    const isCel=monModulo==='celulares';
     const c=document.getElementById('mon-results');if(!c)return;
-    if(!paResultados||!paResultados.length){c.innerHTML='<div class="placeholder-msg"><div class="icon">📭</div>Nenhum item de autopeças</div>';return;}
+    const _srcData=isCel?paCelResultados:paResultados;
+    if(!_srcData||!_srcData.length){c.innerHTML='<div class="placeholder-msg"><div class="icon">📭</div>Nenhum item de '+(isCel?'celulares':'autopeças')+'</div>';return;}
     const pct=v=>(v==null?'—':(v*100).toFixed(2)+'%');
     const fmtData=d=>{if(!d)return'—';const p=(''+d).split('-');return p.length>=2?p[1]+'/'+p[0]:d;};
 
-    // Excluir devoluções dos totais (mantém na lista)
-    const todos=paResultados;
-    const naoDevol=todos.filter(r=>!r.isDevolucao);
+    // Excluir devoluções e usados dos totais
+    const todos=_srcData;
+    const usados=isCel?todos.filter(r=>r.isUsado):[];
+    const naoDevol=todos.filter(r=>!r.isDevolucao&&!(isCel&&r.isUsado));
     const numDevol=todos.filter(r=>r.isDevolucao).length;
 
     // Agrupar por mês (só não-devoluções)
@@ -2360,8 +2551,13 @@ function renderMon(){
     const totCob=totSem+totDif;
 
     // Filtrar por status
-    if(!['sem','diverg','ok','todos'].includes(monStatusFiltro))monStatusFiltro='todos';
-    let dados=monStatusFiltro==='sem'?sem:monStatusFiltro==='diverg'?div:monStatusFiltro==='ok'?ok:filtBase;
+    if(!['sem','diverg','ok','todos','usados'].includes(monStatusFiltro))monStatusFiltro='todos';
+    let dados;
+    if(monStatusFiltro==='usados'&&isCel){
+      dados=usados.filter(r=>monMesFiltro==='todos'||getMesAno(r.data)===monMesFiltro);
+    } else {
+      dados=monStatusFiltro==='sem'?sem:monStatusFiltro==='diverg'?div:monStatusFiltro==='ok'?ok:filtBase;
+    }
     // Incluir devoluções na lista (se filtro período "todos" ou bate o mês)
     const devolFilt=todos.filter(r=>r.isDevolucao&&(monMesFiltro==='todos'||getMesAno(r.data)===monMesFiltro));
     if(monStatusFiltro==='todos') dados=[...dados,...devolFilt];
@@ -2427,12 +2623,14 @@ function renderMon(){
        ${tabBtn('sem','⚠ Sem ret',sem.length,'#b91c1c')}
        ${tabBtn('diverg','⚠ Diverg',div.length,'#92400e')}
        ${tabBtn('ok','✓ OK',ok.length,'#166534')}
+       ${isCel&&usados.length?tabBtn('usados','📱 Usados',usados.length,'#7c3aed'):''}
       </div>
-      <div class="card-row"><span class="label">Total (excl. devoluções)</span><span class="value big">${filtBase.length}</span></div>
+      <div class="card-row"><span class="label">Total (excl. devol.${isCel?' e usados':''})</span><span class="value big">${filtBase.length}</span></div>
       <div class="card-row"><span class="label">⚠ Sem retenção</span><span class="value" style="color:#b91c1c">${sem.length}</span></div>
-      <div class="card-row"><span class="label">⚠ MVA divergente</span><span class="value" style="color:#92400e">${div.length}</span></div>
+      <div class="card-row"><span class="label">⚠ ${isCel?'ST':'MVA'} divergente</span><span class="value" style="color:#92400e">${div.length}</span></div>
       <div class="card-row"><span class="label">✓ Correto</span><span class="value" style="color:#166534">${ok.length}</span></div>
       ${numDevol?'<div class="card-row"><span class="label">🔄 Devoluções (excluídas)</span><span class="value" style="color:#6366f1">'+numDevol+'</span></div>':''}
+      ${isCel&&usados.length?'<div class="card-row"><span class="label">📱 Usados (excluídos)</span><span class="value" style="color:#7c3aed">'+usados.length+'</span></div>':''}
      </div>
      <div class="card"><div class="card-head"><div class="card-icon amber">💰</div>Total a cobrar${monMesFiltro!=='todos'?' — '+monMesFiltro:''}</div>
       <div class="card-row"><span class="label">⚠ Sem retenção</span><span class="value" style="color:#b91c1c">R$ ${fmt(totSem)}</span></div>
@@ -2444,16 +2642,17 @@ function renderMon(){
     pagDados.forEach((r,i)=>{
       const gi=pagStart+i;
       const isDev=r.isDevolucao;
-      const stCls=isDev?'dev':r.status==='sem'?'sem':r.status==='diverg'?'div':'ok';
-      const stTxt=isDev?'🔄 DEV':r.status==='sem'?'⚠ SEM':r.status==='diverg'?'⚠ DIV':'✓ OK';
+      const isUsadoR=isCel&&r.isUsado;
+      const stCls=isDev?"dev":isUsadoR?"dev":r.status==="sem"?"sem":r.status==="diverg"?"div":"ok";
+      const stTxt=isDev?"🔄 DEV":isUsadoR?"📱 USADO":r.status==="sem"?"⚠ SEM":r.status==="diverg"?"⚠ DIV":"✓ OK";
       const alertIcon=r.alertas&&r.alertas.length?'<span title="'+r.alertas.join('\n').replace(/"/g,'&quot;')+'" style="margin-left:4px;cursor:help;font-size:13px">🔍</span>':'';
-      const valor=isDev?'—':r.status==='sem'?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
-      const valColor=isDev?'#6366f1':r.status==='sem'?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
+      const valor=isDev||isUsadoR?'—':r.status==="sem"?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
+      const valColor=isDev||isUsadoR?'#7c3aed':r.status==="sem"?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
       const mvaCmp=r.mvaUsada!=null?'<span style="color:#b91c1c;font-size:10px">'+pct(r.mvaUsada)+'</span> <span style="font-weight:700">'+pct(r.mvaCorreta)+'</span>':pct(r.mvaCorreta);
-      const rowStyle=isDev?'opacity:0.6;':'';
+      const rowStyle=isDev||isUsadoR?'opacity:0.6;':'';
       h+=`<tr class="main" style="${rowStyle}cursor:pointer;border-bottom:1px solid #f1f5f9${gi%2===0?';background:#fafbfc':''}" onclick="(function(e,a){var d=document.getElementById('apd-${gi}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
       h+=`<tr id="apd-${gi}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
-       <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}</div></div>
+       <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}${isUsadoR?' · <b style="color:#7c3aed">CELULAR USADO</b>':''}</div></div>
        <div class="ap-section"><h5>Cálculo da base</h5><div class="row">Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
        <div class="ap-section"><h5>Comparação Declarado × Correto</h5><table class="ap-cmp"><thead><tr><th></th><th>Declarado</th><th>Correto</th><th>Diferença</th></tr></thead><tbody>
         <tr><td>BC-ST</td><td>R$ ${fmt(r.bcSTDeclarado)}</td><td>R$ ${fmt(r.bcSTCorreta)}</td><td>—</td></tr>
@@ -2652,7 +2851,7 @@ function renderMon(){
   const si=document.querySelector('.mon-search');if(si){si.focus();si.setSelectionRange(si.value.length,si.value.length);}
 }
 function toggleRow(i){const r=document.getElementById('row-'+i);const d=document.getElementById('det-'+i);r.classList.toggle('expanded');d.style.display=d.style.display==='none'?'table-row':'none';}
-function exportarMon(){if(monModulo==='veiculos')exportarPAVeiculos();else exportarPA();}
+function exportarMon(){if(monModulo==='veiculos')exportarPAVeiculos();else if(monModulo==='celulares')exportarPACelulares();else exportarPA();}
 
 /* ════════════════════════════════════════════════════════════
    PHASE 3a: FILTROS UF
@@ -3070,16 +3269,18 @@ function renderMonWelcome(){
   const el=document.getElementById('mon-welcome');
   if(!el)return;
   // Count potential items per module
-  let nAuto=0,nVeic=0;
+  let nAuto=0,nVeic=0,nCel=0;
   if(todasNotas.length){
     const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
     nAuto=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTAutopecas(it.CEST)||isNCMAutopecas(it.NCM));}).length;
     nVeic=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&isCESTVeiculo(it.CEST);}).length;
+    nCel=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTCelular(it.CEST)||isNCMCelular(it.NCM));}).length;
   }
   const badgeAuto=todasNotas.length?nAuto+' item(ns) potencial(is)':'Carregue XMLs para analisar';
   const badgeVeic=todasNotas.length?nVeic+' item(ns) potencial(is)':'Carregue XMLs para analisar';
+  const badgeCel=todasNotas.length?nCel+' item(ns) potencial(is)':'Carregue XMLs para analisar';
 
-  el.innerHTML=`<div class="mon-welcome">
+  el.innerHTML=`<div class="mon-welcome" style="grid-template-columns:1fr 1fr 1fr">
     <div class="mon-wcard" onclick="selMon('autopecas',document.querySelectorAll('.mon-mod-btn')[0])">
       <div class="wicon">🔧</div>
       <div class="wtitle">Autopeças ICMS-ST</div>
@@ -3091,6 +3292,12 @@ function renderMonWelcome(){
       <div class="wtitle">Veículos ICMS-ST</div>
       <div class="wdesc">Analisa conformidade de veículos novos (Conv. 199/17 e 51/00), redução de BC, carga efetiva de 12%, coeficientes de repartição e incidência FUMACOP.</div>
       <div class="wbadge">${badgeVeic}</div>
+    </div>
+    <div class="mon-wcard" onclick="selMon('celulares',document.querySelectorAll('.mon-mod-btn')[2])">
+      <div class="wicon">📱</div>
+      <div class="wtitle">Celulares ICMS-ST</div>
+      <div class="wdesc">Verifica retenção ST em operações com aparelhos celulares e cartões inteligentes (Conv. 213/17). MVA 9%. Detecta celulares usados/recondicionados.</div>
+      <div class="wbadge">${badgeCel}</div>
     </div>
   </div>`;
   el.style.display='block';

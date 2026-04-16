@@ -1707,6 +1707,17 @@ function executarPreAuditoriaVeiculos(){
     return;
   }
 
+  // Detectar chassis duplicados (mesmo chassi em mais de uma NF)
+  const chassiCount=new Map();
+  const chassiNotas=new Map();
+  itensVeic.forEach(item=>{
+    const ch=(item.chassi||'').trim().toUpperCase();
+    if(!ch) return;
+    chassiCount.set(ch,(chassiCount.get(ch)||0)+1);
+    if(!chassiNotas.has(ch)) chassiNotas.set(ch,[]);
+    chassiNotas.get(ch).push(item.numero||notaMap.get(item.chave)?.numero||'?');
+  });
+
   itensVeic.forEach(item=>{
     const nota=notaMap.get(item.chave);
     const dataStr=nota.data||'';
@@ -1749,6 +1760,25 @@ function executarPreAuditoriaVeiculos(){
     // ETAPA 1: Verificações obrigatórias
     if(!item.hasVeicProd) vulnerabilidades.push('Erro de Preenchimento Obrigatório — tag veicProd ausente');
 
+    // Detectar NFe substituída (emitida para regularizar outra)
+    const infCplLow=(nota.infCpl||'').toLowerCase();
+    let isSubstituida=false;
+    let nfOriginal='';
+    if(infCplLow.includes('emitida para regularizar')||infCplLow.includes('novo faturamento')||infCplLow.includes('retorno simbolico')||infCplLow.includes('substituição')||infCplLow.includes('substituicao')){
+      isSubstituida=true;
+      // Tentar extrair o número da NFe original
+      const m=(nota.infCpl||'').match(/NF[e]?\s*(?:Original\s*)?n?[°º.]?\s*(\d{6,})/i)||(nota.infCpl||'').match(/(\d{6,})-\d+/);
+      if(m) nfOriginal=m[1];
+    }
+
+    // Detectar chassi duplicado na análise
+    const chAtual=(item.chassi||'').trim().toUpperCase();
+    const isChassiDup=chAtual && chassiCount.get(chAtual)>1;
+    if(isChassiDup){
+      const outrasNF=(chassiNotas.get(chAtual)||[]).filter(n=>n!=(item.numero||nota.numero)).join(', ');
+      vulnerabilidades.push('⚠ Chassi duplicado — mesmo chassi aparece em outra(s) NF(s): '+outrasNF+'. Verificar possível duplicidade ou substituição legítima');
+    }
+
     const cstDecl=item.CST||'';
     let cstEsperado='10 ou 70';
     if(cstDecl==='00'){
@@ -1779,13 +1809,22 @@ function executarPreAuditoriaVeiculos(){
         const bcST=item.bcST||0;
         const icmsDecl=item.icms||0;
 
-        // PMCF (base cheia antes da redução): usar vBCFCPST se disponível, senão reverter de bcST
+        // PMCF (base cheia antes da redução)
         let pRedSTDecl=item.pRedBCST||0;
         // Normalizar: alguns emitentes declaram pRedBCST como fração (0.40) em vez de percentual (40.00)
         if(pRedSTDecl>0 && pRedSTDecl<1) pRedSTDecl=pRedSTDecl*100;
-        let pmcf=item.vBCFCPST||0;
-        if(pmcf===0 && pRedSTDecl>0 && bcST>0){
+        let pmcf=0;
+        // Prioridade 1: se tem pRedBCST, calcular reverso (mais confiável)
+        if(pRedSTDecl>0 && bcST>0){
           pmcf=bcST/(1-(pRedSTDecl/100));
+          // Sanity check: se vBCFCPST declarado é diferente do PMCF calculado, flagar
+          const vBCFCPSTDecl=item.vBCFCPST||0;
+          if(vBCFCPSTDecl>0 && Math.abs(vBCFCPSTDecl-pmcf)>1 && Math.abs(vBCFCPSTDecl-bcST)<1){
+            vulnerabilidades.push('vBCFCPST declarado igual à base reduzida — deveria ser PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' (base cheia)');
+          }
+        } else {
+          // Prioridade 2: usar vBCFCPST
+          pmcf=item.vBCFCPST||0;
         }
         if(pmcf===0) pmcf=bcST;
 
@@ -2036,6 +2075,8 @@ function executarPreAuditoriaVeiculos(){
       icmsDecl:item.icms||0,
       acessorios:item._acessorios||[],
       numItensConsolidados:item._numItensConsolidados||0,
+      isSubstituida:isSubstituida, nfOriginal:nfOriginal,
+      isChassiDup:isChassiDup,
     });
   });
 
@@ -2061,7 +2102,7 @@ async function exportarPAVeiculos(){
     'Vl. Produto','BC-ST (PMCF)','Carga Efetiva(%)','ST Declarado','ST Esperado','Divergência ST',
     'Coef. Decl.(%)','Coef. Esp.(%)','pRedBCST Decl.(%)','pRedBCST Esp.(%)',
     'IPI(%)','FUMACOP Aplicável','pFCPST Decl.','vFCPST Decl.','vFCPST Esperado','Diverg. FUMACOP',
-    'FUMACOP Motivo','Alerta Conv.64','Vulnerabilidades','Acessórios Consolidados'];
+    'FUMACOP Motivo','Alerta Conv.64','NF Substituída','NF Original','Chassi Duplicado','Vulnerabilidades','Acessórios Consolidados'];
   const ws=wb.addWorksheet('Análise Veículos',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'🚗 PRÉ-AUDITORIA VEÍCULOS ICMS-ST',hd.length,1);
   xlSubtitle(ws,resultados.length+' item(ns) analisado(s)'+(outraUFItems.length?' · '+outraUFItems.length+' excluído(s) (entrega outra UF)':'')+' · Gerado em '+hoje,hd.length,2);
@@ -2078,6 +2119,7 @@ async function exportarPAVeiculos(){
       r.pRedBCDecl!==null?r2(r.pRedBCDecl):'',r.pRedBCEsperado!==null?r2(r.pRedBCEsperado):'',
       r2(r.pIPI),r.fumacopAplicavel?'Sim':'Não',r2(r.pFCPSTDecl),r2(r.vFCPSTDecl),r2(r.vfcpstEsperado),
       r2(r.vfcpstEsperado-r.vFCPSTDecl),r.fumacopMotivo||'',r.alertaConv64?'Sim':'Não',
+      r.isSubstituida?'Sim':'Não',r.nfOriginal||'',r.isChassiDup?'Sim':'Não',
       r.vulnerabilidades.join(' | '),
       r.numItensConsolidados>0?(r.numItensConsolidados+' item(ns): '+r.acessorios.join(', ')):''];
     xlDataRow(ws,row,rn,z);
@@ -2089,8 +2131,11 @@ async function exportarPAVeiculos(){
     if(r.destUF==='MA'&&r.entregaUF&&r.entregaUF!=='MA'){
       [10,11,12].forEach(c=>{ws.getCell(rn,c).fill=XL.fill(XL.c.warnBg);ws.getCell(rn,c).font={name:'Arial',bold:true,size:10,color:{argb:XL.c.warnTxt}};});
     }
+    // Highlight NF Substituída e Chassi Duplicado
+    if(r.isSubstituida) ws.getCell(rn,39).fill=XL.fill(XL.c.warnBg);
+    if(r.isChassiDup) ws.getCell(rn,41).fill=XL.fill(XL.c.dangerBg||'FEE2E2');
   });
-  xlAutoWidth(ws,[14,22,10,8,6,48,6,16,30,6,8,14,6,35,10,12,6,18,10,16,16,12,16,16,16,12,12,12,12,8,12,10,14,14,14,30,8,50,40]);
+  xlAutoWidth(ws,[14,22,10,8,6,48,6,16,30,6,8,14,6,35,10,12,6,18,10,16,16,12,16,16,16,12,12,12,12,8,12,10,14,14,14,30,8,10,10,10,50,40]);
   ws.autoFilter={from:{row:4,column:1},to:{row:4+resultados.length,column:hd.length}};}
 
   // Aba 2: Irregulares
@@ -2432,17 +2477,50 @@ function renderMon(){
   h+='<div class="table-card"><table class="mon-table"><thead><tr><th style="width:30px"></th><th>Conv.</th><th>Status</th><th>NF-e</th><th>Veículo</th><th>UF</th><th>PMCF</th><th>Divergência</th></tr></thead><tbody>';
   pagDados.forEach((r,i)=>{
     const gi=pagStart+i;
-    const div=r.divergenciaST||0;
-    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':r.statusItem==='Atencao'?'atencao">🔍 Atenção':'irreg">⚠ Irreg')+'</span></td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td><span class="delta '+(Math.abs(div)<0.5?'zero':'up')+'">'+(div>0?'▲ +':'= ')+'R$ '+fmt(Math.abs(div))+'</span></td></tr>';
+    const divST=r.divergenciaST||0;
+    const divFuma=r.fumacopAplicavel?((r.vfcpstEsperado||0)-(r.vFCPSTDecl||0)):0;
+    const showST=Math.abs(divST)>=0.5;
+    const showFuma=r.fumacopAplicavel&&Math.abs(divFuma)>=0.5;
+    let divHtml='';
+    if(showST && showFuma){
+      divHtml='<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">';
+      divHtml+='<span style="font-size:10.5px;color:'+(Math.abs(divST)<5?'#94a3b8':divST>0?'#b91c1c':'#166534')+';font-variant-numeric:tabular-nums">ST '+(divST>0?'▲ +':divST<0?'▼ -':'= ')+'R$ '+fmt(Math.abs(divST))+'</span>';
+      divHtml+='<span style="font-size:10.5px;color:'+(Math.abs(divFuma)<5?'#94a3b8':divFuma>0?'#b91c1c':'#166534')+';font-variant-numeric:tabular-nums">FUMA '+(divFuma>0?'▲ +':divFuma<0?'▼ -':'= ')+'R$ '+fmt(Math.abs(divFuma))+'</span>';
+      divHtml+='</div>';
+    } else if(showST){
+      divHtml='<span class="delta '+(Math.abs(divST)<5?'zero':'up')+'">ST '+(divST>0?'▲ +':divST<0?'▼ -':'= ')+'R$ '+fmt(Math.abs(divST))+'</span>';
+    } else if(showFuma){
+      divHtml='<span class="delta '+(Math.abs(divFuma)<5?'zero':'up')+'">FUMA '+(divFuma>0?'▲ +':divFuma<0?'▼ -':'= ')+'R$ '+fmt(Math.abs(divFuma))+'</span>';
+    } else {
+      divHtml='<span class="delta zero">= R$ 0,00</span>';
+    }
+    // Badges: substituída e chassi duplicado
+    let badges='';
+    if(r.isSubstituida) badges+='<span title="NFe emitida para regularizar outra nota'+(r.nfOriginal?' (Original: '+r.nfOriginal+')':'')+'" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;cursor:help">🔄 SUB</span>';
+    if(r.isChassiDup) badges+='<span title="Mesmo chassi aparece em outra NF" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:700;cursor:help">⚠ DUP</span>';
+    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':r.statusItem==='Atencao'?'atencao">🔍 Atenção':'irreg">⚠ Irreg')+'</span>'+badges+'</td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td>'+divHtml+'</td></tr>';
     h+='<tr class="detail-row" id="det-'+gi+'" style="display:none"><td colspan="8"><div class="detail-grid">';
     h+='<div class="detail-item"><div class="lbl">Convênio</div><div class="val">'+labelConvenio(r.convenio)+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">CST · CEST</div><div class="val">'+r.cstDecl+' · '+r.CEST+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">Carga efetiva</div><div class="val" style="color:'+(r.cargaEfetiva!=null&&Math.abs(r.cargaEfetiva-12)>0.5?'var(--danger)':'var(--success)')+'">'+(r.cargaEfetiva!=null?r.cargaEfetiva.toFixed(2)+'%':'—')+'</div></div>';
-    h+='<div class="detail-item"><div class="lbl">FUMACOP</div><div class="val">'+(r.fumacopAplicavel?'R$ '+fmt(r.vFCPSTDecl):'N/A')+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">ICMS Próprio</div><div class="val">R$ '+fmt(r.icmsDecl)+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">ST Declarado</div><div class="val">R$ '+fmt(r.stDeclarado)+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">ST Esperado</div><div class="val">'+(r.stCalculado!=null?'R$ '+fmt(r.stCalculado):'—')+'</div></div>';
-    h+='<div class="detail-item"><div class="lbl">Diferença</div><div class="val" style="color:'+(div>0.5?'var(--danger)':'var(--success)')+'">'+(div>0?'+':'')+'R$ '+fmt(div)+'</div></div></div>';
+    const divSTabs=Math.abs(divST);
+    h+='<div class="detail-item"><div class="lbl">Diferença ST</div><div class="val" style="color:'+(divSTabs<5?'var(--success)':'var(--danger)')+'">'+(divST>0?'+':divST<0?'-':'')+'R$ '+fmt(divSTabs)+'</div></div>';
+    if(r.fumacopAplicavel){
+      const divFumaAbs=Math.abs(divFuma);
+      h+='<div class="detail-item"><div class="lbl">FUMACOP Declarado</div><div class="val">R$ '+fmt(r.vFCPSTDecl)+'</div></div>';
+      h+='<div class="detail-item"><div class="lbl">FUMACOP Esperado</div><div class="val">R$ '+fmt(r.vfcpstEsperado)+'</div></div>';
+      h+='<div class="detail-item"><div class="lbl">Diferença FUMACOP</div><div class="val" style="color:'+(divFumaAbs<5?'var(--success)':'var(--danger)')+'">'+(divFuma>0?'+':divFuma<0?'-':'')+'R$ '+fmt(divFumaAbs)+'</div></div>';
+    } else {
+      h+='<div class="detail-item"><div class="lbl">FUMACOP</div><div class="val" style="color:var(--text-3);font-size:12px"><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:600;margin-bottom:3px">N/A (não atinge gatilho)</span><br><span style="font-size:10.5px;color:var(--text-3);font-weight:400">'+(r.fumacopMotivo||'')+'</span></div></div>';
+    }
+    // Info de substituição
+    if(r.isSubstituida){
+      h+='<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:8px 14px;margin-top:8px;font-size:12px;color:#92400e"><b>🔄 NFe de substituição</b> — emitida para regularizar'+(r.nfOriginal?' a NF original nº '+r.nfOriginal:'')+'. Verificar possível duplicidade de cobrança.</div>';
+    }
+    h+='</div>';
     if(r.vulnerabilidades&&r.vulnerabilidades.length){h+='<div class="vuln-list"><h4>Vulnerabilidades detectadas</h4><ul>'+r.vulnerabilidades.map(v=>'<li>'+v+'</li>').join('')+'</ul></div>';}
     if(r.numItensConsolidados>0){h+='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 14px;margin-top:8px;font-size:12px;color:#1e40af"><b>📦 '+r.numItensConsolidados+' item(ns) acessório(s) consolidado(s):</b> '+r.acessorios.join(', ')+'</div>';}
     h+='</td></tr>';

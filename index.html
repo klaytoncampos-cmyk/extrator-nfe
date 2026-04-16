@@ -375,6 +375,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <button class="mon-run" id="mon-run-btn" onclick="execMon()">▶ Executar monitoramento</button>
 <button class="btn btn-primary" id="mon-export-btn" onclick="exportarMon()" style="display:none;margin-left:8px;padding:9px 18px;font-size:13px">⬇️ Exportar monitoramento</button>
 </div>
+<div id="mon-empresa" style="display:none"></div>
 <div id="mon-welcome"></div>
 <div id="mon-results"></div></section>
 
@@ -685,6 +686,7 @@ async function processarEntrada(files,acumular){
   document.getElementById('log').classList.add('collapsed');
   document.getElementById('log-toggle').textContent='▶ Mostrar log de processamento';
   renderUploadSummary();
+  renderMonWelcome();
 }
 
 /* ══════════ UPLOAD SUMMARY / INTELLIGENCE PANEL ══════════ */
@@ -1677,13 +1679,14 @@ function verificarGatilhoFumacop(item,dataStr,nota,convenio){
 
   // Triciclos e quadriciclos — incidência automática
   if(desc.includes('triciclo')||desc.includes('quadriciclo')) return{aplicavel:true,motivo:'Triciclo/Quadriciclo — incidência automática',pmcfGatilho};
-  // Veículos CEST 25.xxx → PMCF > 150.000
-  if(cest.startsWith('25')){
-    if(pmcfGatilho>150000) return{aplicavel:true,motivo:'Veículo CEST 25 — PMCF R$'+pmcfGatilho.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (fonte: '+pmcfFonte+')',pmcfGatilho};
-    return{aplicavel:false,motivo:'Veículo CEST 25 — PMCF R$'+pmcfGatilho.toLocaleString('pt-BR',{minimumFractionDigits:2})+' ≤ R$150.000 (fonte: '+pmcfFonte+')',pmcfGatilho};
+  // Veículos CEST 25.xxx ou NCM 8703/8704 (quando CEST vazio) → PMCF > 150.000
+  if(cest.startsWith('25')||((!cest)&&(ncm.startsWith('8703')||ncm.startsWith('8704')))){
+    const label=cest.startsWith('25')?'CEST 25':'NCM '+ncm+' (CEST ausente)';
+    if(pmcfGatilho>150000) return{aplicavel:true,motivo:'Veículo '+label+' — PMCF R$'+pmcfGatilho.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (fonte: '+pmcfFonte+')',pmcfGatilho};
+    return{aplicavel:false,motivo:'Veículo '+label+' — PMCF R$'+pmcfGatilho.toLocaleString('pt-BR',{minimumFractionDigits:2})+' ≤ R$150.000 (fonte: '+pmcfFonte+')',pmcfGatilho};
   }
-  // Motos CEST 26.xxx, NCM 8711 → cilin > 250
-  if(cest.startsWith('26')){
+  // Motos CEST 26.xxx ou NCM 8711 (quando CEST vazio) → cilin > 250
+  if(cest.startsWith('26')||((!cest)&&ncm.startsWith('8711'))){
     if(ncm.startsWith('8711')){
       if(item.cilin>250) return{aplicavel:true,motivo:'Moto NCM 8711 — '+item.cilin+'cc > 250cc',pmcfGatilho};
       return{aplicavel:false,motivo:'Moto NCM 8711 — '+item.cilin+'cc ≤ 250cc',pmcfGatilho};
@@ -1698,6 +1701,11 @@ function isCESTVeiculo(cest){
   const c=cest.replace(/\./g,'');
   return c.startsWith('25')||c.startsWith('26');
 }
+function isNCMVeiculo(ncm){
+  if(!ncm) return false;
+  const n=ncm.replace(/\./g,'');
+  return n.startsWith('8703')||n.startsWith('8704')||n.startsWith('8711');
+}
 
 /* --- EXECUÇÃO PRINCIPAL --- */
 function executarPreAuditoriaVeiculos(){
@@ -1705,12 +1713,12 @@ function executarPreAuditoriaVeiculos(){
   const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
   paVeicResultados=[];
 
-  // Filtrar itens de veículos (CEST 25.xxx ou 26.xxx)
+  // Filtrar itens de veículos (CEST 25.xxx/26.xxx OU NCM 8703/8704/8711)
   const itensVeicRaw=todosItens.filter(item=>{
     const nota=notaMap.get(item.chave);
     if(!nota) return false;
     if(nota.ufEmissao==='MA') return false;
-    return isCESTVeiculo(item.CEST);
+    return isCESTVeiculo(item.CEST)||isNCMVeiculo(item.NCM);
   });
 
   // Consolidar itens acessórios (pintura, acessório, etc.) com o veículo principal da mesma nota
@@ -1762,7 +1770,7 @@ function executarPreAuditoriaVeiculos(){
     {const _e=document.getElementById('pa-summary');if(_e)_e.style.display='none';}
     {const _e=document.getElementById('pa-actions');if(_e)_e.style.display='none';}
     {const _e=document.getElementById('pa-tab-bar');if(_e)_e.style.display='none';}
-    {const _r=document.getElementById('pa-results');if(_r)_r.innerHTML='<div class="pa-no-data">Nenhum item com CEST 25.xxx ou 26.xxx encontrado (excluindo emitentes MA).</div>';}
+    {const _r=document.getElementById('pa-results');if(_r)_r.innerHTML='<div class="pa-no-data">Nenhum item com CEST 25.xxx/26.xxx ou NCM 8703/8704/8711 encontrado (excluindo emitentes MA).</div>';}
     return;
   }
 
@@ -1818,6 +1826,7 @@ function executarPreAuditoriaVeiculos(){
 
     // ETAPA 1: Verificações obrigatórias
     if(!item.hasVeicProd) vulnerabilidades.push('Erro de Preenchimento Obrigatório — tag veicProd ausente');
+    if(!isCESTVeiculo(item.CEST) && isNCMVeiculo(item.NCM)) vulnerabilidades.push('CEST ausente — NCM '+item.NCM+' corresponde a veículo mas CEST não informado (obrigatório)');
 
     // Detectar NFe substituída (emitida para regularizar outra)
     const infCplLow=(nota.infCpl||'').toLowerCase();
@@ -1857,6 +1866,7 @@ function executarPreAuditoriaVeiculos(){
     let fumacopBaseCorreta=true;
     let vfcpstEsperado=0;
     let alertaConv64=false;
+    const _aliqIntraMA=getAliqIntraMA(dataStr);
 
     // Se CST 00, não prosseguir com cálculos
     if(cstDecl!=='00'){
@@ -1890,9 +1900,12 @@ function executarPreAuditoriaVeiculos(){
         // Re-avaliar FUMACOP com PMCF recalculado (caso a primeira avaliação tenha sido limitada)
         if(pmcf>0 && dataStr.replace(/\//g,'-')>='2025-02-23'){
           const cest=(item.CEST||'').replace(/\./g,'');
-          if(cest.startsWith('25') && pmcf>150000 && !fumacopAplicavel){
+          const _ncm=(item.NCM||'').replace(/\./g,'');
+          const isVeicFuma=cest.startsWith('25')||((!cest)&&(_ncm.startsWith('8703')||_ncm.startsWith('8704')));
+          if(isVeicFuma && pmcf>150000 && !fumacopAplicavel){
             fumacopAplicavel=true;
-            fumacopInfo={aplicavel:true,motivo:'Veículo CEST 25 — PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (base cheia)',pmcfGatilho:pmcf};
+            const label=cest.startsWith('25')?'CEST 25':'NCM '+_ncm;
+            fumacopInfo={aplicavel:true,motivo:'Veículo '+label+' — PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (base cheia)',pmcfGatilho:pmcf};
           }
         }
 
@@ -1903,6 +1916,12 @@ function executarPreAuditoriaVeiculos(){
           if(Math.abs(pRedSTDecl-info.pRedBC)>0.05){
             vulnerabilidades.push('pRedBCST incorreto — declarado '+pRedSTDecl.toFixed(2)+'%, esperado '+info.pRedBC.toFixed(2)+'% para alíquota de '+(aliqMA*100).toFixed(0)+'% vigente na data');
           }
+        }
+
+        // Verificar pICMSST (deve ser = alíquota interna MA vigente)
+        const pICMSSTDecl=item.pICMSST||0;
+        if(pICMSSTDecl>0 && Math.abs(pICMSSTDecl-(aliqMA*100))>0.05){
+          vulnerabilidades.push('pICMSST incorreto — declarado '+pICMSSTDecl.toFixed(2)+'%, esperado '+(aliqMA*100).toFixed(0)+'% (alíquota interna MA vigente)'+(Math.abs(pICMSSTDecl-25)<0.1?' — emitente embute 2% FUMACOP na alíquota':''));
         }
 
         // Carga efetiva: (ICMS + ST) / PMCF deve ser ≈ 12% (Dec. 20.498/04)
@@ -2105,7 +2124,7 @@ function executarPreAuditoriaVeiculos(){
     // Atenção = vulnerabilidade formal sem impacto financeiro (coeficiente errado, pRedBCST diferente, mas ST bate)
     // Regular = tudo OK
     if(vulnerabilidades.length>0 && statusItem!=='Irregular'){
-      const ignorar=['tag veicProd ausente'];
+      const ignorar=['tag veicProd ausente','CEST ausente','pICMSST incorreto','pRedBCST incorreto'];
       const temCritica=vulnerabilidades.some(v=>!ignorar.some(ig=>v.includes(ig)));
       if(temCritica){
         const temImpactoST=Math.abs(divergenciaST)>5.00;
@@ -2148,6 +2167,8 @@ function executarPreAuditoriaVeiculos(){
       convenio:convenio, alertaConv64:alertaConv64,
       coefDecl:coefDecl, coefEsperado:coefEsperado,
       pRedBCDecl:pRedBCDecl, pRedBCEsperado:pRedBCEsperado,
+      pICMSSTDecl:item.pICMSST||0, aliqIntraEsperada:(_aliqIntraMA||0)*100,
+      vNF:nota.vNF||0,
       cargaEfetiva:cargaEfetiva,
       vProd:item.vProd||0,
       bcST:item.bcST||0,
@@ -2196,6 +2217,7 @@ async function exportarPAVeiculos(){
     'Item','Descrição','NCM','CEST','CST Decl.','Chassi','Cilindrada',
     'Vl. Produto','BC-ST (PMCF)','Carga Efetiva(%)','ST Declarado','ST Esperado','Divergência ST',
     'Coef. Decl.(%)','Coef. Esp.(%)','pRedBCST Decl.(%)','pRedBCST Esp.(%)',
+    'pICMSST Decl.(%)','pICMSST Esp.(%)',
     'IPI(%)','FUMACOP Aplicável','pFCPST Decl.','vFCPST Decl.','vFCPST Esperado','Diverg. FUMACOP',
     'FUMACOP Motivo','Alerta Conv.64','Devolução','NF Substituída','NF Original','Chassi Duplicado','Vulnerabilidades','Acessórios Consolidados'];
   const ws=wb.addWorksheet('Análise Veículos',{views:[{state:'frozen',ySplit:4}]});
@@ -2212,6 +2234,7 @@ async function exportarPAVeiculos(){
       r2(r.stDeclarado),r.stCalculado!==null?r2(r.stCalculado):'',r.stCalculado!==null?r2(r.divergenciaST):'',
       r.coefDecl!==null?r2(r.coefDecl):'',r.coefEsperado!==null?r2(r.coefEsperado):'',
       r.pRedBCDecl!==null?r2(r.pRedBCDecl):'',r.pRedBCEsperado!==null?r2(r.pRedBCEsperado):'',
+      r.pICMSSTDecl||'',r.aliqIntraEsperada||'',
       r2(r.pIPI),r.fumacopAplicavel?'Sim':'Não',r2(r.pFCPSTDecl),r2(r.vFCPSTDecl),r2(r.vfcpstEsperado),
       r2(r.vfcpstEsperado-r.vFCPSTDecl),r.fumacopMotivo||'',r.alertaConv64?'Sim':'Não',
       r.isDevolucao?'Sim':'Não',r.isSubstituida?'Sim':'Não',r.nfOriginal||'',r.isChassiDup?'Sim':'Não',
@@ -2849,6 +2872,7 @@ function renderMon(){
     if(r.isSubstituida) badges+='<span title="NFe emitida para regularizar outra nota'+(r.nfOriginal?' (Original: '+r.nfOriginal+')':'')+'" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;cursor:help">🔄 SUB</span>';
     if(r.isChassiDup) badges+='<span title="Mesmo chassi aparece em outra NF" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:700;cursor:help">⚠ DUP</span>';
     if(r.coefConv51Tolerado) badges+='<span title="Coeficiente Conv. 51 com divergência ≤ 3% — tolerado, verificar detalhes" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fef9c3;color:#854d0e;font-size:9px;font-weight:700;cursor:help">🔍 COEF</span>';
+    if(r.convenio&&r.convenio.startsWith('Conv_51')&&r.coefDecl!=null&&r.coefEsperado!=null&&Math.abs(r.coefDecl-r.coefEsperado)>3) badges+='<span title="Coef. destino declarado '+r.coefDecl.toFixed(1)+'% vs esperado '+r.coefEsperado.toFixed(1)+'% — MA recebe menos ST" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:700;cursor:help">📉 COEF.DEST</span>';
     const rowStyle=r.isDevolucao?'opacity:.65;':'';
     h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'" style="'+rowStyle+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':r.statusItem==='Atencao'?'atencao">🔍 Atenção':'irreg">⚠ Irreg')+'</span>'+badges+'</td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td>'+divHtml+'</td></tr>';
     h+='<tr class="detail-row" id="det-'+gi+'" style="display:none"><td colspan="8"><div class="detail-grid">';
@@ -2860,6 +2884,17 @@ function renderMon(){
     h+='<div class="detail-item"><div class="lbl">ST Esperado</div><div class="val">'+(r.stCalculado!=null?'R$ '+fmt(r.stCalculado):'—')+'</div></div>';
     const divSTabs=Math.abs(divST);
     h+='<div class="detail-item"><div class="lbl">Diferença ST</div><div class="val" style="color:'+(divSTabs<5?'var(--success)':'var(--danger)')+'">'+(divST>0?'+':divST<0?'-':'')+'R$ '+fmt(divSTabs)+'</div></div>';
+    // Campos intermediários (pICMSST, pRedBCST, coef)
+    if(r.pICMSSTDecl>0||r.pRedBCDecl>0||r.coefDecl!=null){
+      const aliqOk=r.pICMSSTDecl>0&&Math.abs(r.pICMSSTDecl-r.aliqIntraEsperada)<0.1;
+      const redOk=r.pRedBCDecl>0&&r.pRedBCEsperado!=null&&Math.abs(r.pRedBCDecl-r.pRedBCEsperado)<0.1;
+      if(r.pICMSSTDecl>0) h+='<div class="detail-item"><div class="lbl">pICMSST</div><div class="val" style="color:'+(aliqOk?'var(--success)':'#b45309')+'">'+r.pICMSSTDecl.toFixed(2)+'% <span style="font-size:10px;color:var(--text-3)">(esp. '+r.aliqIntraEsperada.toFixed(0)+'%)</span></div></div>';
+      if(r.pRedBCDecl>0) h+='<div class="detail-item"><div class="lbl">pRedBCST</div><div class="val" style="color:'+(redOk?'var(--success)':'#b45309')+'">'+r.pRedBCDecl.toFixed(2)+'% <span style="font-size:10px;color:var(--text-3)">(esp. '+(r.pRedBCEsperado!=null?r.pRedBCEsperado.toFixed(2):'—')+'%)</span></div></div>';
+      if(r.coefDecl!=null&&r.coefEsperado!=null){
+        const coefOk=Math.abs(r.coefDecl-r.coefEsperado)<1;
+        h+='<div class="detail-item"><div class="lbl">Coef. Destino</div><div class="val" style="color:'+(coefOk?'var(--success)':'var(--danger)')+'">'+r.coefDecl.toFixed(2)+'% <span style="font-size:10px;color:var(--text-3)">(esp. '+r.coefEsperado.toFixed(2)+'%)</span></div></div>';
+      }
+    }
     if(r.fumacopAplicavel){
       const divFumaAbs=Math.abs(divFuma);
       h+='<div class="detail-item"><div class="lbl">FUMACOP Declarado</div><div class="val">R$ '+fmt(r.vFCPSTDecl)+'</div></div>';
@@ -3310,7 +3345,58 @@ function resetarDados(){
 }
 
 /* ══════════ 3. MONITORING WELCOME SCREEN ══════════ */
+let empresaAnalisada=null;
+function detectarEmpresaAnalisada(){
+  empresaAnalisada=null;
+  if(!todasNotas.length)return;
+  // Contar frequência de emitentes e destinatários
+  const emitCount={},destCount={};
+  todasNotas.forEach(n=>{
+    const ke=(n.emitCNPJ||'')+'|'+(n.emitNome||'');
+    const kd=(n.destDoc||'')+'|'+(n.destNome||'');
+    emitCount[ke]=(emitCount[ke]||0)+1;
+    destCount[kd]=(destCount[kd]||0)+1;
+  });
+  // Encontrar o mais frequente de cada lado
+  let topEmit=null,topEmitN=0,topDest=null,topDestN=0;
+  for(const[k,n]of Object.entries(emitCount)){if(n>topEmitN){topEmitN=n;topEmit=k;}}
+  for(const[k,n]of Object.entries(destCount)){if(n>topDestN){topDestN=n;topDest=k;}}
+  const total=todasNotas.length;
+  const pctEmit=topEmitN/total;
+  const pctDest=topDestN/total;
+  // Se um lado domina (>=70%), é a empresa em análise
+  if(pctEmit>=0.7 && pctEmit>=pctDest){
+    const[cnpj,nome]=topEmit.split('|');
+    const uf=todasNotas.find(n=>n.emitCNPJ===cnpj)?.ufEmissao||'';
+    empresaAnalisada={tipo:'emitente',cnpj,nome,uf,pct:pctEmit,qtd:topEmitN};
+  }else if(pctDest>=0.7){
+    const[doc,nome]=topDest.split('|');
+    const uf=todasNotas.find(n=>n.destDoc===doc)?.destUF||'';
+    empresaAnalisada={tipo:'destinatario',cnpj:doc,nome,uf,pct:pctDest,qtd:topDestN};
+  }
+  renderEmpresaBanner();
+}
+function renderEmpresaBanner(){
+  const el=document.getElementById('mon-empresa');
+  if(!el)return;
+  if(!empresaAnalisada){el.style.display='none';return;}
+  const e=empresaAnalisada;
+  const icon=e.tipo==='emitente'?'📤':'📥';
+  const label=e.tipo==='emitente'?'Emitente':'Destinatário';
+  const cnpjFmt=e.cnpj&&e.cnpj.length===14?e.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):e.cnpj;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--primary-soft);border:1.5px solid var(--primary);border-radius:10px;margin:10px 0">
+    <span style="font-size:24px">${icon}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">${label} em análise</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.nome}</div>
+      <div style="font-size:12px;color:var(--text-2);margin-top:1px">CNPJ ${cnpjFmt} · ${e.uf} · ${e.qtd} de ${todasNotas.length} nota(s) (${Math.round(e.pct*100)}%)</div>
+    </div>
+  </div>`;
+  el.style.display='block';
+}
+
 function renderMonWelcome(){
+  detectarEmpresaAnalisada();
   const el=document.getElementById('mon-welcome');
   if(!el)return;
   // Count potential items per module
@@ -3318,7 +3404,7 @@ function renderMonWelcome(){
   if(todasNotas.length){
     const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
     nAuto=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTAutopecas(it.CEST)||isNCMAutopecas(it.NCM));}).length;
-    nVeic=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&isCESTVeiculo(it.CEST);}).length;
+    nVeic=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTVeiculo(it.CEST)||isNCMVeiculo(it.NCM));}).length;
     nCel=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTCelular(it.CEST)||isNCMCelular(it.NCM));}).length;
   }
   const badgeAuto=todasNotas.length?nAuto+' item(ns) potencial(is)':'Carregue XMLs para analisar';

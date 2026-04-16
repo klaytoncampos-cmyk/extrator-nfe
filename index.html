@@ -2377,6 +2377,24 @@ function executarPreAuditoriaCelulares(){
 
   const MVA_ORIGINAL=0.09;
 
+  // Conv. 213/17 — UFs signatárias por data
+  function isSignatario213(uf,dataStr){
+    const d=(dataStr||'').replace(/\//g,'-');
+    // Nunca foram signatários
+    const nuncaSig=new Set(['AM','SP','PE','DF','RR']);
+    if(nuncaSig.has(uf)) return false;
+    // Exclusões temporais
+    if(uf==='SC' && d>='2019-01-01') return false;
+    if(uf==='RN' && d>='2020-05-01') return false;
+    if(uf==='PI' && d>='2021-10-08') return false;
+    if(uf==='RS' && d>='2022-07-01') return false;
+    if(uf==='RO' && d>='2023-03-01') return false;
+    if(uf==='BA' && d>='2024-01-01') return false;
+    if(uf==='AL' && d>='2024-09-01') return false;
+    if(uf==='PR' && d>='2026-03-01') return false;
+    return true;
+  }
+
   todosItens.forEach(item=>{
     const nota=notaMap.get(item.chave);
     if(!nota)return;
@@ -2392,6 +2410,9 @@ function executarPreAuditoriaCelulares(){
     const orig=item.orig||'0';
     const crt=nota.emitCRT||'3';
     const isSimples=crt==='1';
+
+    // Detectar se UF emitente é signatária do Conv. 213/17
+    const isAntecipacao=!isSignatario213(ufEmit,dataStr);
 
     // Detectar celular usado (sistema de pontuação)
     const isUsado=isCelularUsado(item.xProd,nota.infCpl,item.pRedBC,item.cstIPI,item.ipi);
@@ -2442,9 +2463,13 @@ function executarPreAuditoriaCelulares(){
     } else if(stDeclarado===0 && bcSTDeclarado===0){
       status='sem';
       diferenca=icmsSTCorreto;
-      alertas.push('Omissão de ST — CST '+item.CST+' sem retenção em operação sujeita a ST (Conv. 213/17)');
+      if(isAntecipacao){
+        alertas.push('UF emitente ('+ufEmit+') não signatária do Conv. 213/17 — ICMS-ST deve ser recolhido por antecipação pelo destinatário no MA');
+      } else {
+        alertas.push('Omissão de ST — CST '+item.CST+' sem retenção em operação sujeita a ST (Conv. 213/17)');
+      }
       if(item.CFOP && !['6401','6403'].includes(item.CFOP.trim())){
-        alertas.push('CFOP '+item.CFOP+' — esperado 6401 ou 6403 para operação com ST');
+        alertas.push('CFOP '+item.CFOP+(isAntecipacao?' (aceitável — remetente não é substituto)':' — esperado 6401 ou 6403 para operação com ST'));
       }
     } else {
       diferenca=icmsSTCorreto-stDeclarado;
@@ -2483,6 +2508,7 @@ function executarPreAuditoriaCelulares(){
       mvaCorreta, bcSTCorreta, icmsProprioCorreto, icmsSTCorreto,
       status, diferenca, alertas, isDevolucao,
       isUsado:isUsado,
+      isAntecipacao:isAntecipacao,
       matchCEST:matchCEST, matchNCM:matchNCM,
     });
   });
@@ -2504,7 +2530,7 @@ async function exportarPACelulares(){
     'Vl.Produto','IPI','Base Pré-MVA','ALQ Inter(%)','ALQ Intra(%)',
     'MVA Correta(%)','BC-ST Correto','ICMS Próprio','ICMS-ST Correto',
     'BC-ST Declarado','ST Declarado','Diferença',
-    'Usado','Devolução','Alertas'];
+    'Usado','Devolução','Antecipação','Alertas'];
   const ws=wb.addWorksheet('Análise Celulares',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'📱 PRÉ-AUDITORIA CELULARES ICMS-ST (Conv. 213/17)',hd.length,1);
   xlSubtitle(ws,resultados.length+' item(ns) · MVA original 9% · Gerado em '+hoje,hd.length,2);
@@ -2518,7 +2544,7 @@ async function exportarPACelulares(){
       r2(r.vProd),r2(r.ipiItem),r2(r.basePreMVA),r2(r.aliqInter*100),r2(r.aliqIntra*100),
       r2(r.mvaCorreta*100),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
       r2(r.bcSTDeclarado),r2(r.stDeclarado),r2(r.diferenca),
-      r.isUsado?'Sim':'Não',r.isDevolucao?'Sim':'Não',r.alertas.join(' | ')];
+      r.isUsado?'Sim':'Não',r.isDevolucao?'Sim':'Não',r.isAntecipacao?'Sim':'Não',r.alertas.join(' | ')];
     xlDataRow(ws,row,rn,z);
     const isOk=r.status==='ok'&&!r.isUsado&&!r.isDevolucao;
     xlStatusCell(ws.getCell(rn,1),isOk);
@@ -2526,7 +2552,7 @@ async function exportarPACelulares(){
     xlDivCell(ws.getCell(rn,27),r.diferenca);
     if(r.isUsado) ws.getCell(rn,28).fill=XL.fill('E0E7FF');
   });
-  xlAutoWidth(ws,[14,10,10,6,48,6,16,30,6,6,40,12,12,6,4,14,12,14,8,8,10,14,14,14,14,14,14,8,8,50]);
+  xlAutoWidth(ws,[14,10,10,6,48,6,16,30,6,6,40,12,12,6,4,14,12,14,8,8,10,14,14,14,14,14,14,8,8,10,50]);
   ws.autoFilter={from:{row:4,column:1},to:{row:4+resultados.length,column:hd.length}};}
 
   await xlSave(wb,'pre_auditoria_celulares_'+hoje+'.xlsx');
@@ -2664,11 +2690,12 @@ function renderMon(){
       const stCls=isDev?"dev":isUsadoR?"dev":r.status==="sem"?"sem":r.status==="diverg"?"div":"ok";
       const stTxt=isDev?"🔄 DEV":isUsadoR?"📱 USADO":r.status==="sem"?"⚠ SEM":r.status==="diverg"?"⚠ DIV":"✓ OK";
       const alertIcon=r.alertas&&r.alertas.length?'<span title="'+r.alertas.join('\n').replace(/"/g,'&quot;')+'" style="margin-left:4px;cursor:help;font-size:13px">🔍</span>':'';
+      const antecBadge=isCel&&r.isAntecipacao&&!isUsadoR&&!isDev?'<span title="UF '+r.ufEmit+' não signatária do Conv. 213/17 — antecipação pelo destinatário" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#dbeafe;color:#1e40af;font-size:9px;font-weight:700;cursor:help">📥 ANTEC</span>':'';
       const valor=isDev||isUsadoR?'—':r.status==="sem"?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
       const valColor=isDev||isUsadoR?'#7c3aed':r.status==="sem"?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
       const mvaCmp=r.mvaUsada!=null?'<span style="color:#b91c1c;font-size:10px">'+pct(r.mvaUsada)+'</span> <span style="font-weight:700">'+pct(r.mvaCorreta)+'</span>':pct(r.mvaCorreta);
       const rowStyle=isDev||isUsadoR?'opacity:0.6;':'';
-      h+=`<tr class="main" style="${rowStyle}cursor:pointer;border-bottom:1px solid #f1f5f9${gi%2===0?';background:#fafbfc':''}" onclick="(function(e,a){var d=document.getElementById('apd-${gi}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
+      h+=`<tr class="main" style="${rowStyle}cursor:pointer;border-bottom:1px solid #f1f5f9${gi%2===0?';background:#fafbfc':''}" onclick="(function(e,a){var d=document.getElementById('apd-${gi}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${antecBadge}${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
       h+=`<tr id="apd-${gi}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
        <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}${isUsadoR?' · <b style="color:#7c3aed">CELULAR USADO</b>':''}</div></div>
        <div class="ap-section"><h5>Cálculo da base</h5><div class="row">Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>

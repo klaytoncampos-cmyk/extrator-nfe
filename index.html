@@ -2346,10 +2346,28 @@ function isNCMCelular(ncm){
   return n.startsWith('851713')||n.startsWith('851714')||n.startsWith('851712')||n.startsWith('852352');
 }
 
-const CELULAR_USADO_KEYWORDS=['usado','seminovo','semi novo','semi-novo','recondicionado','refurbished','remanufaturado','segunda mao','segunda mão','buyback'];
-function isCelularUsado(xProd){
+const CELULAR_USADO_FORTES=['usado','seminovo','semi novo','semi-novo','recondicionado','refurbished','remanufaturado','segunda mao','segunda mão','buyback'];
+function isCelularUsado(xProd,infCpl,pRedBC,cstIPI,vIPI){
+  let pontos=0;
   const t=(xProd||'').toLowerCase();
-  return CELULAR_USADO_KEYWORDS.some(k=>t.includes(k));
+  const inf=(infCpl||'').toLowerCase();
+
+  // Indicadores FORTES (2 pontos cada — sozinho basta)
+  if(CELULAR_USADO_FORTES.some(k=>t.includes(k))) pontos+=2;
+  if(inf.includes('produto usado')) pontos+=2;
+  if(inf.includes('buyback')) pontos+=2;
+
+  // Indicadores FRACOS (1 ponto cada — precisa de 2+)
+  // "BB" no xProd como palavra separada (após espaço, antes de espaço/vírgula/fim)
+  if(/\bBB\b/i.test(xProd||'')) pontos+=1;
+  // pRedBC >= 75% (Conv. ICMS 15/81 mercadoria usada)
+  if((pRedBC||0)>=75) pontos+=1;
+  // IPI CST 99 + vIPI = 0 (sem tributação IPI)
+  if(cstIPI==='99'&&(vIPI||0)===0) pontos+=1;
+  // infCpl com "garantia" + "90 dias"
+  if(inf.includes('garantia')&&inf.includes('90 dias')) pontos+=1;
+
+  return pontos>=2;
 }
 
 function executarPreAuditoriaCelulares(){
@@ -2375,8 +2393,8 @@ function executarPreAuditoriaCelulares(){
     const crt=nota.emitCRT||'3';
     const isSimples=crt==='1';
 
-    // Detectar celular usado
-    const isUsado=isCelularUsado(item.xProd);
+    // Detectar celular usado (sistema de pontuação)
+    const isUsado=isCelularUsado(item.xProd,nota.infCpl,item.pRedBC,item.cstIPI,item.ipi);
 
     // Detectar devolução
     const isDevolucao=item.CFOP&&['1411','2411','5411','6411','1410','2410'].includes(item.CFOP.trim());

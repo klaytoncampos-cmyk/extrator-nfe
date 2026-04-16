@@ -1610,28 +1610,51 @@ function convBadge(c){
 }
 
 /* --- FUMACOP: gatilho de incidência --- */
-function verificarGatilhoFumacop(item,dataStr){
-  if(!dataStr||dataStr.replace(/\//g,'-')<'2025-02-23') return{aplicavel:false,motivo:'dhEmi anterior a 23/02/2025'};
+function verificarGatilhoFumacop(item,dataStr,nota,convenio){
+  if(!dataStr||dataStr.replace(/\//g,'-')<'2025-02-23') return{aplicavel:false,motivo:'dhEmi anterior a 23/02/2025',pmcfGatilho:0};
   const cest=(item.CEST||'').replace(/\./g,'');
   const ncm=(item.NCM||'').replace(/\./g,'');
   const desc=(item.xProd||'').toLowerCase();
-  const pmcf=item.bcST||0; // PMCF = vBCST (preço máximo ao consumidor final)
+
+  // Calcular PMCF correto por convênio
+  let pmcfGatilho=0;
+  let pmcfFonte='';
+  if(convenio&&convenio.startsWith('Conv_51')){
+    // Conv. 51/00 — usar vNF da nota (valor total ao consumidor)
+    pmcfGatilho=(nota&&nota.vNF)||((item.vProd||0)+(item.ipi||0));
+    pmcfFonte='vNF da nota';
+  } else {
+    // Conv. 199 e outros — usar vBCFCPST se disponível, senão bcST revertido, senão vProd+IPI
+    let pRedST=item.pRedBCST||0;
+    if(pRedST>0&&pRedST<1) pRedST=pRedST*100;
+    if(item.vBCFCPST>0){
+      pmcfGatilho=item.vBCFCPST;
+      pmcfFonte='vBCFCPST';
+    } else if(pRedST>0&&item.bcST>0){
+      pmcfGatilho=item.bcST/(1-pRedST/100);
+      pmcfFonte='bcST revertido';
+    } else {
+      pmcfGatilho=(item.vProd||0)+(item.ipi||0);
+      pmcfFonte='vProd+IPI';
+    }
+  }
+
   // Triciclos e quadriciclos — incidência automática
-  if(desc.includes('triciclo')||desc.includes('quadriciclo')) return{aplicavel:true,motivo:'Triciclo/Quadriciclo — incidência automática'};
-  // Veículos CEST 25.xxx → PMCF (vBCST) > 150.000
+  if(desc.includes('triciclo')||desc.includes('quadriciclo')) return{aplicavel:true,motivo:'Triciclo/Quadriciclo — incidência automática',pmcfGatilho};
+  // Veículos CEST 25.xxx → PMCF > 150.000
   if(cest.startsWith('25')){
-    if(pmcf>150000) return{aplicavel:true,motivo:'Veículo CEST 25 — PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000'};
-    return{aplicavel:false,motivo:'Veículo CEST 25 — PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' ≤ R$150.000'};
+    if(pmcfGatilho>150000) return{aplicavel:true,motivo:'Veículo CEST 25 — PMCF R$'+pmcfGatilho.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (fonte: '+pmcfFonte+')',pmcfGatilho};
+    return{aplicavel:false,motivo:'Veículo CEST 25 — PMCF R$'+pmcfGatilho.toLocaleString('pt-BR',{minimumFractionDigits:2})+' ≤ R$150.000 (fonte: '+pmcfFonte+')',pmcfGatilho};
   }
   // Motos CEST 26.xxx, NCM 8711 → cilin > 250
   if(cest.startsWith('26')){
     if(ncm.startsWith('8711')){
-      if(item.cilin>250) return{aplicavel:true,motivo:'Moto NCM 8711 — '+item.cilin+'cc > 250cc'};
-      return{aplicavel:false,motivo:'Moto NCM 8711 — '+item.cilin+'cc ≤ 250cc'};
+      if(item.cilin>250) return{aplicavel:true,motivo:'Moto NCM 8711 — '+item.cilin+'cc > 250cc',pmcfGatilho};
+      return{aplicavel:false,motivo:'Moto NCM 8711 — '+item.cilin+'cc ≤ 250cc',pmcfGatilho};
     }
-    return{aplicavel:false,motivo:'CEST 26 — NCM não é 8711'};
+    return{aplicavel:false,motivo:'CEST 26 — NCM não é 8711',pmcfGatilho};
   }
-  return{aplicavel:false,motivo:'Fora do escopo FUMACOP'};
+  return{aplicavel:false,motivo:'Fora do escopo FUMACOP',pmcfGatilho};
 }
 
 function isCESTVeiculo(cest){
@@ -1793,7 +1816,7 @@ function executarPreAuditoriaVeiculos(){
     let stDeclarado=item.icmsST||0;
     let stCalculado=null;
     let divergenciaST=0;
-    let fumacopInfo=verificarGatilhoFumacop(item,dataStr);
+    let fumacopInfo=verificarGatilhoFumacop(item,dataStr,nota,convenio);
     let fumacopAplicavel=fumacopInfo.aplicavel;
     let fumacopBaseCorreta=true;
     let vfcpstEsperado=0;
@@ -1828,12 +1851,12 @@ function executarPreAuditoriaVeiculos(){
         }
         if(pmcf===0) pmcf=bcST;
 
-        // Re-avaliar FUMACOP com PMCF real (não base reduzida) — somente se data >= 23/02/2025
-        if(pmcf>0 && pmcf!==bcST && dataStr.replace(/\//g,'-')>='2025-02-23'){
+        // Re-avaliar FUMACOP com PMCF recalculado (caso a primeira avaliação tenha sido limitada)
+        if(pmcf>0 && dataStr.replace(/\//g,'-')>='2025-02-23'){
           const cest=(item.CEST||'').replace(/\./g,'');
           if(cest.startsWith('25') && pmcf>150000 && !fumacopAplicavel){
             fumacopAplicavel=true;
-            fumacopInfo={aplicavel:true,motivo:'Veículo CEST 25 — PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (base cheia)'};
+            fumacopInfo={aplicavel:true,motivo:'Veículo CEST 25 — PMCF R$'+pmcf.toLocaleString('pt-BR',{minimumFractionDigits:2})+' > R$150.000 (base cheia)',pmcfGatilho:pmcf};
           }
         }
 
@@ -2046,6 +2069,12 @@ function executarPreAuditoriaVeiculos(){
       }
     }
 
+    // Detectar devolução/entrada no monitoramento de veículos
+    const _finNFe=(nota.finNFe||'').toLowerCase();
+    const _tpNF=(nota.tpNF||'').toLowerCase();
+    const _cfop=(item.CFOP||'').trim();
+    const isDevolucaoVeic=_finNFe.includes('devolu')||_tpNF.includes('entrada')||['1410','1411','2410','2411'].includes(_cfop);
+
     paVeicResultados.push({
       chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
       data:dataStr, ufEmit:ufEmit,
@@ -2077,6 +2106,7 @@ function executarPreAuditoriaVeiculos(){
       numItensConsolidados:item._numItensConsolidados||0,
       isSubstituida:isSubstituida, nfOriginal:nfOriginal,
       isChassiDup:isChassiDup,
+      isDevolucao:isDevolucaoVeic,
     });
   });
 
@@ -2094,6 +2124,9 @@ async function exportarPAVeiculos(){
   // Separar outra UF
   const resultados=paVeicResultados.filter(r=>r.statusItem!=='outraUF');
   const outraUFItems=paVeicResultados.filter(r=>r.statusItem==='outraUF');
+  const devolucoesItems=paVeicResultados.filter(r=>r.isDevolucao&&r.statusItem!=='outraUF');
+  // Incluir devoluções na exportação mas com flag para filtragem
+  const resultadosExport=paVeicResultados.filter(r=>r.statusItem!=='outraUF');
 
   // Aba 1: Análise Veículos
   {const hd=['Status','Convênio','Período','NF-e','Série','Chave','UF Emit.','CNPJ Emit.','Emitente',
@@ -2102,13 +2135,13 @@ async function exportarPAVeiculos(){
     'Vl. Produto','BC-ST (PMCF)','Carga Efetiva(%)','ST Declarado','ST Esperado','Divergência ST',
     'Coef. Decl.(%)','Coef. Esp.(%)','pRedBCST Decl.(%)','pRedBCST Esp.(%)',
     'IPI(%)','FUMACOP Aplicável','pFCPST Decl.','vFCPST Decl.','vFCPST Esperado','Diverg. FUMACOP',
-    'FUMACOP Motivo','Alerta Conv.64','NF Substituída','NF Original','Chassi Duplicado','Vulnerabilidades','Acessórios Consolidados'];
+    'FUMACOP Motivo','Alerta Conv.64','Devolução','NF Substituída','NF Original','Chassi Duplicado','Vulnerabilidades','Acessórios Consolidados'];
   const ws=wb.addWorksheet('Análise Veículos',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'🚗 PRÉ-AUDITORIA VEÍCULOS ICMS-ST',hd.length,1);
-  xlSubtitle(ws,resultados.length+' item(ns) analisado(s)'+(outraUFItems.length?' · '+outraUFItems.length+' excluído(s) (entrega outra UF)':'')+' · Gerado em '+hoje,hd.length,2);
+  xlSubtitle(ws,resultados.length+' item(ns) analisado(s)'+(outraUFItems.length?' · '+outraUFItems.length+' excluído(s) (entrega outra UF)':'')+(devolucoesItems.length?' · '+devolucoesItems.length+' devolução(ões) excluída(s) dos totais':'')+' · Gerado em '+hoje,hd.length,2);
   ws.getRow(3).height=4;
   xlHeaderRow(ws,hd,4);
-  resultados.forEach((r,i)=>{
+  resultadosExport.forEach((r,i)=>{
     const rn=5+i;const z=i%2===1;const isOk=r.statusItem==='Regular';
     const row=[r.statusItem,labelConvenio(r.convenio),r.data,r.numero,r.serie,r.chave,
       r.ufEmit,r.emitCNPJ,r.emitNome,r.destUF||'',r.entregaUF||'',r.entregaMun||'',
@@ -2119,7 +2152,7 @@ async function exportarPAVeiculos(){
       r.pRedBCDecl!==null?r2(r.pRedBCDecl):'',r.pRedBCEsperado!==null?r2(r.pRedBCEsperado):'',
       r2(r.pIPI),r.fumacopAplicavel?'Sim':'Não',r2(r.pFCPSTDecl),r2(r.vFCPSTDecl),r2(r.vfcpstEsperado),
       r2(r.vfcpstEsperado-r.vFCPSTDecl),r.fumacopMotivo||'',r.alertaConv64?'Sim':'Não',
-      r.isSubstituida?'Sim':'Não',r.nfOriginal||'',r.isChassiDup?'Sim':'Não',
+      r.isDevolucao?'Sim':'Não',r.isSubstituida?'Sim':'Não',r.nfOriginal||'',r.isChassiDup?'Sim':'Não',
       r.vulnerabilidades.join(' | '),
       r.numItensConsolidados>0?(r.numItensConsolidados+' item(ns): '+r.acessorios.join(', ')):''];
     xlDataRow(ws,row,rn,z);
@@ -2131,12 +2164,15 @@ async function exportarPAVeiculos(){
     if(r.destUF==='MA'&&r.entregaUF&&r.entregaUF!=='MA'){
       [10,11,12].forEach(c=>{ws.getCell(rn,c).fill=XL.fill(XL.c.warnBg);ws.getCell(rn,c).font={name:'Arial',bold:true,size:10,color:{argb:XL.c.warnTxt}};});
     }
-    // Highlight NF Substituída e Chassi Duplicado
+    // Devolução: fundo roxo claro
+    if(r.isDevolucao) ws.getCell(rn,38).fill=XL.fill('E0E7FF');
+    // NF Substituída
     if(r.isSubstituida) ws.getCell(rn,39).fill=XL.fill(XL.c.warnBg);
+    // Chassi Duplicado
     if(r.isChassiDup) ws.getCell(rn,41).fill=XL.fill(XL.c.dangerBg||'FEE2E2');
   });
-  xlAutoWidth(ws,[14,22,10,8,6,48,6,16,30,6,8,14,6,35,10,12,6,18,10,16,16,12,16,16,16,12,12,12,12,8,12,10,14,14,14,30,8,10,10,10,50,40]);
-  ws.autoFilter={from:{row:4,column:1},to:{row:4+resultados.length,column:hd.length}};}
+  xlAutoWidth(ws,[14,22,10,8,6,48,6,16,30,6,8,14,6,35,10,12,6,18,10,16,16,12,16,16,16,12,12,12,12,8,12,10,14,14,14,30,8,10,10,10,10,50,40]);
+  ws.autoFilter={from:{row:4,column:1},to:{row:4+resultadosExport.length,column:hd.length}};}
 
   // Aba 2: Irregulares
   {const irreg=resultados.filter(r=>r.statusItem==='Irregular');
@@ -2385,13 +2421,16 @@ function renderMon(){
   const dadosBrutos=monModulo==='veiculos'?paVeicResultados:paResultados;
   // Separar itens de outra UF (não contam nos totais)
   const outraUF=monModulo==='veiculos'?dadosBrutos.filter(r=>r.statusItem==='outraUF'):[];
-  const dados=monModulo==='veiculos'?dadosBrutos.filter(r=>r.statusItem!=='outraUF'):dadosBrutos;
-  if(!dados||!dados.length){document.getElementById('mon-results').innerHTML='<div class="placeholder-msg"><div class="icon">📭</div>Nenhum item encontrado para análise'+(outraUF.length?' ('+outraUF.length+' item(ns) com entrega em outra UF excluído(s))':'')+'</div>';return;}
+  // Separar devoluções (por padrão escondidas)
+  const devolucoesVeic=monModulo==='veiculos'?dadosBrutos.filter(r=>r.isDevolucao&&r.statusItem!=='outraUF'):[];
+  const dados=monModulo==='veiculos'?dadosBrutos.filter(r=>r.statusItem!=='outraUF'&&!r.isDevolucao):dadosBrutos;
+  if(!dados||!dados.length&&monStatusFiltro!=='devol'){document.getElementById('mon-results').innerHTML='<div class="placeholder-msg"><div class="icon">📭</div>Nenhum item encontrado para análise'+(outraUF.length?' ('+outraUF.length+' item(ns) com entrega em outra UF excluído(s))':'')+(devolucoesVeic.length?' ('+devolucoesVeic.length+' devolução(ões) excluída(s))':'')+'</div>';return;}
   // Agrupar por mês
   const meses={};dados.forEach(r=>{const k=getMesAno(r.data);if(!meses[k])meses[k]={n:0,div:0};meses[k].n++;meses[k].div+=Math.max(0,r.divergenciaST||0);});
   const mesesKeys=Object.keys(meses).sort();
-  // Filtrar
-  let filt=dados.filter(r=>{
+  // Filtrar — se filtro = devol, usar devoluções, senão usar dados normais
+  const baseFilt=monStatusFiltro==='devol'?devolucoesVeic:dados;
+  let filt=baseFilt.filter(r=>{
     if(monMesFiltro!=='todos'&&getMesAno(r.data)!==monMesFiltro)return false;
     if(monStatusFiltro==='irreg'&&r.statusItem!=='Irregular')return false;
     if(monStatusFiltro==='atencao'&&r.statusItem!=='Atencao')return false;
@@ -2401,11 +2440,13 @@ function renderMon(){
   const irreg=filt.filter(r=>r.statusItem==='Irregular').length;
   const atencao=filt.filter(r=>r.statusItem==='Atencao').length;
   const reg=filt.filter(r=>r.statusItem==='Regular').length;
-  const tSTd=filt.reduce((s,r)=>s+(r.stDeclarado||0),0);
-  const tSTe=filt.reduce((s,r)=>s+(r.stCalculado!=null?r.stCalculado:r.stDeclarado||0),0);
+  // Totais sempre usam dados normais (sem devoluções)
+  const filtTotais=monStatusFiltro==='devol'?dados.filter(r=>monMesFiltro==='todos'||getMesAno(r.data)===monMesFiltro):filt;
+  const tSTd=filtTotais.reduce((s,r)=>s+(r.stDeclarado||0),0);
+  const tSTe=filtTotais.reduce((s,r)=>s+(r.stCalculado!=null?r.stCalculado:r.stDeclarado||0),0);
   const tDivST=tSTe-tSTd;
-  const tFd=filt.reduce((s,r)=>s+(r.vFCPSTDecl||0),0);
-  const tFe=filt.reduce((s,r)=>s+(r.vfcpstEsperado||0),0);
+  const tFd=filtTotais.reduce((s,r)=>s+(r.vFCPSTDecl||0),0);
+  const tFe=filtTotais.reduce((s,r)=>s+(r.vfcpstEsperado||0),0);
   const tDivF=tFe-tFd;
   const totalCobrar=(tDivST>0?tDivST:0)+(tDivF>0?tDivF:0);
   // Build HTML
@@ -2462,6 +2503,9 @@ function renderMon(){
   h+='<div class="chip '+(monStatusFiltro==='irreg'?'active':'')+'" onclick="monStatusFiltro=\'irreg\';monPagina=1;renderMon()">⚠ Irregulares<span class="count">'+dados.filter(r=>r.statusItem==='Irregular').length+'</span></div>';
   h+='<div class="chip '+(monStatusFiltro==='atencao'?'active':'')+'" onclick="monStatusFiltro=\'atencao\';monPagina=1;renderMon()">🔍 Atenção<span class="count">'+dados.filter(r=>r.statusItem==='Atencao').length+'</span></div>';
   h+='<div class="chip '+(monStatusFiltro==='ok'?'active':'')+'" onclick="monStatusFiltro=\'ok\';monPagina=1;renderMon()">✓ Regulares<span class="count">'+dados.filter(r=>r.statusItem==='Regular').length+'</span></div>';
+  if(monModulo==='veiculos'&&devolucoesVeic.length>0){
+    h+='<div class="chip '+(monStatusFiltro==='devol'?'active':'')+'" onclick="monStatusFiltro=\'devol\';monPagina=1;renderMon()" style="'+(monStatusFiltro==='devol'?'':'opacity:.75')+'">🔄 Devoluções<span class="count">'+devolucoesVeic.length+'</span></div>';
+  }
   h+='<input class="mon-search" type="text" placeholder="Buscar por NF-e, emitente, NCM..." value="'+monBusca.replace(/"/g,'&quot;')+'" oninput="monBusca=this.value;monPagina=1;renderMon()">';
   h+='</div>';
   // Search filter
@@ -2494,11 +2538,13 @@ function renderMon(){
     } else {
       divHtml='<span class="delta zero">= R$ 0,00</span>';
     }
-    // Badges: substituída e chassi duplicado
+    // Badges: devolução, substituída, chassi duplicado
     let badges='';
+    if(r.isDevolucao) badges+='<span title="Nota de devolução/entrada — excluída dos totais" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#e0e7ff;color:#4338ca;font-size:9px;font-weight:700;cursor:help">🔄 DEV</span>';
     if(r.isSubstituida) badges+='<span title="NFe emitida para regularizar outra nota'+(r.nfOriginal?' (Original: '+r.nfOriginal+')':'')+'" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fef3c7;color:#92400e;font-size:9px;font-weight:700;cursor:help">🔄 SUB</span>';
     if(r.isChassiDup) badges+='<span title="Mesmo chassi aparece em outra NF" style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:4px;background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:700;cursor:help">⚠ DUP</span>';
-    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':r.statusItem==='Atencao'?'atencao">🔍 Atenção':'irreg">⚠ Irreg')+'</span>'+badges+'</td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td>'+divHtml+'</td></tr>';
+    const rowStyle=r.isDevolucao?'opacity:.65;':'';
+    h+='<tr class="main" onclick="toggleRow('+gi+')" id="row-'+gi+'" style="'+rowStyle+'"><td><span class="expand-arrow">▶</span></td><td>'+convBadge(r.convenio)+'</td><td><span class="status-pill '+(r.statusItem==='Regular'?'ok">✓ OK':r.statusItem==='Atencao'?'atencao">🔍 Atenção':'irreg">⚠ Irreg')+'</span>'+badges+'</td><td class="mono">'+r.numero+'</td><td>'+(r.xProd||'').substring(0,30)+'</td><td><b>'+r.ufEmit+'</b></td><td class="mono">R$ '+fmt(r.bcST)+'</td><td>'+divHtml+'</td></tr>';
     h+='<tr class="detail-row" id="det-'+gi+'" style="display:none"><td colspan="8"><div class="detail-grid">';
     h+='<div class="detail-item"><div class="lbl">Convênio</div><div class="val">'+labelConvenio(r.convenio)+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">CST · CEST</div><div class="val">'+r.cstDecl+' · '+r.CEST+'</div></div>';

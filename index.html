@@ -1647,11 +1647,56 @@ function executarPreAuditoriaVeiculos(){
   paVeicResultados=[];
 
   // Filtrar itens de veículos (CEST 25.xxx ou 26.xxx)
-  const itensVeic=todosItens.filter(item=>{
+  const itensVeicRaw=todosItens.filter(item=>{
     const nota=notaMap.get(item.chave);
     if(!nota) return false;
-    if(nota.ufEmissao==='MA') return false; // emitente MA = não é ST
+    if(nota.ufEmissao==='MA') return false;
     return isCESTVeiculo(item.CEST);
+  });
+
+  // Consolidar itens acessórios (pintura, acessório, etc.) com o veículo principal da mesma nota
+  // Veículo principal = tem veicProd. Acessórios = mesma nota, CEST 25/26, sem veicProd.
+  const porNota=new Map();
+  itensVeicRaw.forEach(item=>{
+    if(!porNota.has(item.chave)) porNota.set(item.chave,[]);
+    porNota.get(item.chave).push(item);
+  });
+  const itensVeic=[];
+  porNota.forEach((itens,chave)=>{
+    const principal=itens.find(i=>i.hasVeicProd);
+    if(principal){
+      const acessorios=itens.filter(i=>!i.hasVeicProd);
+      if(acessorios.length>0){
+        // Consolidar: somar valores dos acessórios ao principal
+        const cons={...principal};
+        cons.vProd=(cons.vProd||0);
+        cons.ipi=(cons.ipi||0);
+        cons.icms=(cons.icms||0);
+        cons.icmsST=(cons.icmsST||0);
+        cons.bcST=(cons.bcST||0);
+        cons.vFCPST=(cons.vFCPST||0);
+        cons.vBCFCPST=(cons.vBCFCPST||0);
+        const nomes=[];
+        acessorios.forEach(a=>{
+          cons.vProd+=(a.vProd||0);
+          cons.ipi+=(a.ipi||0);
+          cons.icms+=(a.icms||0);
+          cons.icmsST+=(a.icmsST||0);
+          cons.bcST+=(a.bcST||0);
+          cons.vFCPST+=(a.vFCPST||0);
+          cons.vBCFCPST+=(a.vBCFCPST||0);
+          nomes.push((a.xProd||'').trim());
+        });
+        cons._acessorios=nomes;
+        cons._numItensConsolidados=acessorios.length;
+        itensVeic.push(cons);
+      } else {
+        itensVeic.push(principal);
+      }
+    } else {
+      // Sem veículo principal — manter todos (serão flagados)
+      itens.forEach(i=>itensVeic.push(i));
+    }
   });
 
   if(!itensVeic.length){
@@ -1696,6 +1741,7 @@ function executarPreAuditoriaVeiculos(){
         statusItem:'outraUF',
         vulnerabilidades:[],
         pIPI:item.pIPI||0, icmsDecl:item.icms||0,
+        acessorios:item._acessorios||[], numItensConsolidados:item._numItensConsolidados||0,
       });
       return; // pula cálculos
     }
@@ -1988,6 +2034,8 @@ function executarPreAuditoriaVeiculos(){
       vulnerabilidades:vulnerabilidades,
       pIPI:item.pIPI||0,
       icmsDecl:item.icms||0,
+      acessorios:item._acessorios||[],
+      numItensConsolidados:item._numItensConsolidados||0,
     });
   });
 
@@ -2013,7 +2061,7 @@ async function exportarPAVeiculos(){
     'Vl. Produto','BC-ST (PMCF)','Carga Efetiva(%)','ST Declarado','ST Esperado','Divergência ST',
     'Coef. Decl.(%)','Coef. Esp.(%)','pRedBCST Decl.(%)','pRedBCST Esp.(%)',
     'IPI(%)','FUMACOP Aplicável','pFCPST Decl.','vFCPST Decl.','vFCPST Esperado','Diverg. FUMACOP',
-    'FUMACOP Motivo','Alerta Conv.64','Vulnerabilidades'];
+    'FUMACOP Motivo','Alerta Conv.64','Vulnerabilidades','Acessórios Consolidados'];
   const ws=wb.addWorksheet('Análise Veículos',{views:[{state:'frozen',ySplit:4}]});
   xlTitle(ws,'🚗 PRÉ-AUDITORIA VEÍCULOS ICMS-ST',hd.length,1);
   xlSubtitle(ws,resultados.length+' item(ns) analisado(s)'+(outraUFItems.length?' · '+outraUFItems.length+' excluído(s) (entrega outra UF)':'')+' · Gerado em '+hoje,hd.length,2);
@@ -2030,7 +2078,8 @@ async function exportarPAVeiculos(){
       r.pRedBCDecl!==null?r2(r.pRedBCDecl):'',r.pRedBCEsperado!==null?r2(r.pRedBCEsperado):'',
       r2(r.pIPI),r.fumacopAplicavel?'Sim':'Não',r2(r.pFCPSTDecl),r2(r.vFCPSTDecl),r2(r.vfcpstEsperado),
       r2(r.vfcpstEsperado-r.vFCPSTDecl),r.fumacopMotivo||'',r.alertaConv64?'Sim':'Não',
-      r.vulnerabilidades.join(' | ')];
+      r.vulnerabilidades.join(' | '),
+      r.numItensConsolidados>0?(r.numItensConsolidados+' item(ns): '+r.acessorios.join(', ')):''];
     xlDataRow(ws,row,rn,z);
     xlStatusCell(ws.getCell(rn,1),isOk);
     [20,21,23,24,33,34].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
@@ -2041,7 +2090,7 @@ async function exportarPAVeiculos(){
       [10,11,12].forEach(c=>{ws.getCell(rn,c).fill=XL.fill(XL.c.warnBg);ws.getCell(rn,c).font={name:'Arial',bold:true,size:10,color:{argb:XL.c.warnTxt}};});
     }
   });
-  xlAutoWidth(ws,[14,22,10,8,6,48,6,16,30,6,8,14,6,35,10,12,6,18,10,16,16,12,16,16,16,12,12,12,12,8,12,10,14,14,14,30,8,50]);
+  xlAutoWidth(ws,[14,22,10,8,6,48,6,16,30,6,8,14,6,35,10,12,6,18,10,16,16,12,16,16,16,12,12,12,12,8,12,10,14,14,14,30,8,50,40]);
   ws.autoFilter={from:{row:4,column:1},to:{row:4+resultados.length,column:hd.length}};}
 
   // Aba 2: Irregulares
@@ -2395,6 +2444,7 @@ function renderMon(){
     h+='<div class="detail-item"><div class="lbl">ST Esperado</div><div class="val">'+(r.stCalculado!=null?'R$ '+fmt(r.stCalculado):'—')+'</div></div>';
     h+='<div class="detail-item"><div class="lbl">Diferença</div><div class="val" style="color:'+(div>0.5?'var(--danger)':'var(--success)')+'">'+(div>0?'+':'')+'R$ '+fmt(div)+'</div></div></div>';
     if(r.vulnerabilidades&&r.vulnerabilidades.length){h+='<div class="vuln-list"><h4>Vulnerabilidades detectadas</h4><ul>'+r.vulnerabilidades.map(v=>'<li>'+v+'</li>').join('')+'</ul></div>';}
+    if(r.numItensConsolidados>0){h+='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 14px;margin-top:8px;font-size:12px;color:#1e40af"><b>📦 '+r.numItensConsolidados+' item(ns) acessório(s) consolidado(s):</b> '+r.acessorios.join(', ')+'</div>';}
     h+='</td></tr>';
   });
   h+='</tbody></table></div>';

@@ -1047,7 +1047,7 @@ const XL={
   BRL:'#,##0.00',PCT:'0.00%',
   fill(argb){return{type:'pattern',pattern:'solid',fgColor:{argb}};},
   ac:{ horizontal:'center',vertical:'middle',wrapText:true },
-  al:{ horizontal:'left',vertical:'middle',wrapText:true },
+  al:{ horizontal:'left',vertical:'middle',wrapText:false },
   ar:{ horizontal:'right',vertical:'middle' },
 };
 
@@ -1073,6 +1073,7 @@ function xlHeaderRow(ws,headers,rowNum){
 }
 function xlDataRow(ws,vals,rowNum,zebra){
   const row=ws.getRow(rowNum);
+  row.height=18;
   vals.forEach((v,i)=>{
     const c=row.getCell(i+1);c.value=v;c.font=XL.f.body;
     c.fill=XL.fill(zebra?XL.c.zebra:XL.c.white);c.border=XL.bdr;c.alignment=XL.al;
@@ -1365,12 +1366,14 @@ function executarPreAuditoria(){
     }
 
     // Base pré-MVA: se Conv. 06/09 detectado, usar BcR (base reduzida) + IPI + despesas (§3º)
+    // Desconto incondicional (vDesc) é deduzido da base (LC 87/96, art. 13, §1º, II, "a")
     let basePreMVA;
+    const vDescItem=item.vDescItem||0;
     if(usaConv0609){
-      const bcReduzida=(item.vProd||0)*(1-conv0609Pct/100);
+      const bcReduzida=((item.vProd||0)-vDescItem)*(1-conv0609Pct/100);
       basePreMVA=bcReduzida+(item.ipi||0)+freteRat+seguroRat+outrosRat;
     } else {
-      basePreMVA=(item.vProd||0)+(item.ipi||0)+freteRat+seguroRat+outrosRat;
+      basePreMVA=((item.vProd||0)-vDescItem)+(item.ipi||0)+freteRat+seguroRat+outrosRat;
     }
 
     const mvaOrigItem=getMVAOriginal(item);
@@ -1418,6 +1421,11 @@ function executarPreAuditoria(){
       if(!cestStr) alertas.push('⚠️ NCM '+(item.NCM||'')+' consta na lista de autopeças mas CEST não informado — verificar se item é autopeça');
       else alertas.push('⚠️ NCM '+(item.NCM||'')+' consta na lista de autopeças mas CEST '+cestStr+' não pertence ao segmento 01/16 — verificar classificação');
     }
+    // Alerta desconto incondicional excessivo
+    if(vDescItem>0&&(item.vProd||0)>0&&(vDescItem/(item.vProd||1))>0.10){
+      alertas.push('⚠️ Desconto incondicional de '+(vDescItem/(item.vProd||1)*100).toFixed(1)+'% (R$ '+vDescItem.toFixed(2)+') — verificar se é incondicional legítimo');
+    }
+
     const cfop=(item.CFOP||'').trim();
     if(['6910','6911','6949','5910','5911','5949'].includes(cfop)){
       alertas.push('⚠️ CFOP '+cfop+' (bonificação/amostra/outras saídas) — operação normalmente não sujeita a ST');
@@ -1434,7 +1442,7 @@ function executarPreAuditoria(){
       emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ, emitCRT:crt,
       nitem:item.nitem, cProd:item.cProd, xProd:item.xProd,
       NCM:item.NCM, CEST:item.CEST, CFOP:item.CFOP, orig:item.orig||'',
-      vProd:item.vProd||0, ipiItem:item.ipi||0,
+      vProd:item.vProd||0, vDescItem, ipiItem:item.ipi||0,
       freteRat, seguroRat, outrosRat,
       icmsItem:item.icms||0,
       basePreMVA, regime:isSimples?'SN':'Normal',
@@ -1553,7 +1561,7 @@ function renderPATable(){
     h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
     h+=`<tr id="pad-${i}" style="display:none;background:#f8fafc;border-left:3px solid #1e40af"><td colspan="10" style="padding:6px 0">
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Identificação</h5><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b></div></div>
-     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
+     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 8px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Comparação Declarado × Correto</h5><table style="max-width:480px;font-size:13px;font-variant-numeric:tabular-nums;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:5px 16px 5px 0;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0"></th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Declarado</th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Correto</th><th style="text-align:right;padding:5px 0 5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Diferença</th></tr></thead><tbody>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">BC-ST</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTDeclarado)}</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">MVA</td><td style="text-align:right;padding:6px 16px">${r.mvaUsada!=null?pct(r.mvaUsada):'—'}</td><td style="text-align:right;padding:6px 16px">${pct(r.mvaCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
@@ -1584,7 +1592,7 @@ async function exportarPA(){
   const semR=paResultados.filter(r=>r.status==='sem');
   {const hd=['Período','NF-e','Série','Chave','UF','CNPJ Emitente','Emitente','CRT','Regime',
     'Item','Cód.Produto','Descrição','NCM','CEST','CFOP','Devolução',
-    'Vl.Produto','IPI Item','Frete Rat.','Seguro Rat.','Outros Rat.','Base Pré-MVA',
+    'Vl.Produto','Desc.Inc.','IPI Item','Frete Rat.','Seguro Rat.','Outros Rat.','Base Pré-MVA',
     'ALQ Inter','ALQ Intra','MVA Correta','BC-ST Calculada','ICMS Próprio','ICMS-ST Devido',
     'Match CEST','Match NCM','Alertas'];
   const ws=wb.addWorksheet('Sem Retenção ST',{views:[{state:'frozen',ySplit:4}]});
@@ -1592,12 +1600,12 @@ async function exportarPA(){
   xlSubtitle(ws,semR.length+' item(ns) · Gerado em '+hoje,hd.length,2);
   ws.getRow(3).height=4;
   xlHeaderRow(ws,hd,4);
-  const moneyCols1=new Set([17,18,19,20,21,22,26,27,28]);
-  const pctCols1=new Set([23,24,25]);
+  const moneyCols1=new Set([17,18,19,20,21,22,23,27,28,29]);
+  const pctCols1=new Set([24,25,26]);
   semR.forEach((r,i)=>{
     const row=[r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT,r.regime,
       r.nitem,r.cProd,r.xProd,r.NCM,r.CEST,r.CFOP,r.isDevolucao?'Sim':'Não',
-      r2(r.vProd),r2(r.ipiItem),r2(r.freteRat),r2(r.seguroRat),r2(r.outrosRat),r2(r.basePreMVA),
+      r2(r.vProd),r2(r.vDescItem||0),r2(r.ipiItem),r2(r.freteRat),r2(r.seguroRat),r2(r.outrosRat),r2(r.basePreMVA),
       r2(r.aliqInter),r2(r.aliqIntra),r2(r.mvaCorreta),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
       r.matchCEST?'Sim':'Não',r.matchNCM?'Sim':'Não',
       (r.alertas||[]).join(' | ')];
@@ -2712,13 +2720,15 @@ function executarPreAuditoriaCelulares(){
     }
 
     // Base pré-MVA (rateio frete/seguro/outros)
+    // Desconto incondicional (vDesc) é deduzido da base (LC 87/96, art. 13, §1º, II, "a")
     const vProd=item.vProd||0;
+    const vDescItem=item.vDescItem||0;
     const ipiItem=item.ipi||0;
     const nItens=todosItens.filter(it=>it.chave===item.chave).length||1;
     const freteRat=((nota.vFrete||0)/nItens);
     const seguroRat=((nota.vSeg||0)/nItens);
     const outrosRat=((nota.vOutro||0)/nItens);
-    const basePreMVA=vProd+ipiItem+freteRat+seguroRat+outrosRat;
+    const basePreMVA=(vProd-vDescItem)+ipiItem+freteRat+seguroRat+outrosRat;
 
     // BC-ST e ST corretos
     const bcSTCorreta=basePreMVA*(1+mvaCorreta);
@@ -2735,6 +2745,7 @@ function executarPreAuditoriaCelulares(){
     const alertas=[];
 
     if(!matchCEST && matchNCM) alertas.push('CEST ausente — NCM '+item.NCM+' corresponde a celular mas CEST não informado');
+    if(vDescItem>0&&vProd>0&&(vDescItem/vProd)>0.10) alertas.push('⚠️ Desconto incondicional de '+(vDescItem/vProd*100).toFixed(1)+'% (R$ '+vDescItem.toFixed(2)+') — verificar se é incondicional legítimo');
 
     if(isUsado){
       status='ok';
@@ -2777,7 +2788,7 @@ function executarPreAuditoriaCelulares(){
       emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ, emitCRT:crt,
       nitem:item.nitem, cProd:item.cProd, xProd:item.xProd,
       NCM:item.NCM, CEST:item.CEST, CFOP:item.CFOP, orig:orig,
-      vProd:vProd, ipiItem:ipiItem,
+      vProd:vProd, vDescItem, ipiItem:ipiItem,
       freteRat, seguroRat, outrosRat,
       icmsItem:item.icms||0,
       basePreMVA, regime:isSimples?'SN':'Normal',
@@ -2806,7 +2817,7 @@ async function exportarPACelulares(){
 
   {const hd=['Status','Período','NF-e','Série','Chave','UF Emit.','CNPJ Emit.','Emitente','CRT',
     'Item','Descrição','NCM','CEST','CFOP','Origem',
-    'Vl.Produto','IPI','Base Pré-MVA','ALQ Inter(%)','ALQ Intra(%)',
+    'Vl.Produto','Desc.Inc.','IPI','Base Pré-MVA','ALQ Inter(%)','ALQ Intra(%)',
     'MVA Correta(%)','BC-ST Correto','ICMS Próprio','ICMS-ST Correto',
     'BC-ST Declarado','ST Declarado','Diferença',
     'Usado','Devolução','Antecipação','Alertas'];
@@ -2820,7 +2831,7 @@ async function exportarPACelulares(){
     const stLabel=r.isUsado?'Usado':r.isDevolucao?'Devolução':r.status==='sem'?'Sem retenção':r.status==='diverg'?'Divergente':'OK';
     const row=[stLabel,r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT==='1'?'SN':'RN',
       r.nitem,r.xProd,r.NCM,r.CEST||'',r.CFOP||'',r.orig,
-      r2(r.vProd),r2(r.ipiItem),r2(r.basePreMVA),r2(r.aliqInter*100),r2(r.aliqIntra*100),
+      r2(r.vProd),r2(r.vDescItem||0),r2(r.ipiItem),r2(r.basePreMVA),r2(r.aliqInter*100),r2(r.aliqIntra*100),
       r2(r.mvaCorreta*100),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
       r2(r.bcSTDeclarado),r2(r.stDeclarado),r2(r.diferenca),
       r.isUsado?'Sim':'Não',r.isDevolucao?'Sim':'Não',r.isAntecipacao?'Sim':'Não',r.alertas.join(' | ')];
@@ -2977,7 +2988,7 @@ function renderMon(){
       h+=`<tr class="main" style="${rowStyle}cursor:pointer;border-bottom:1px solid #f1f5f9${gi%2===0?';background:#fafbfc':''}" onclick="(function(e,a){var d=document.getElementById('apd-${gi}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${antecBadge}${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
       h+=`<tr id="apd-${gi}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
        <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}${isUsadoR?' · <b style="color:#7c3aed">CELULAR USADO</b>':''}</div></div>
-       <div class="ap-section"><h5>Cálculo da base</h5><div class="row">Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
+       <div class="ap-section"><h5>Cálculo da base</h5><div class="row">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
        <div class="ap-section"><h5>Comparação Declarado × Correto</h5><table class="ap-cmp"><thead><tr><th></th><th>Declarado</th><th>Correto</th><th>Diferença</th></tr></thead><tbody>
         <tr><td>BC-ST</td><td>R$ ${fmt(r.bcSTDeclarado)}</td><td>R$ ${fmt(r.bcSTCorreta)}</td><td>—</td></tr>
         <tr><td>MVA</td><td>${r.mvaUsada!=null?pct(r.mvaUsada):'—'}</td><td>${pct(r.mvaCorreta)}</td><td>—</td></tr>

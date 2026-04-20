@@ -6,6 +6,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{--bg:#f5f7fb;--surface:#fff;--surface-2:#f9fafd;--border:#e4e8f1;--border-strong:#cdd4e3;--text:#0f172a;--text-2:#475569;--text-3:#94a3b8;--primary:#1e3a8a;--primary-2:#2547a8;--primary-soft:#eef2ff;--accent:#f59e0b;--accent-soft:#fef3c7;--success:#10b981;--success-soft:#d1fae5;--danger:#dc2626;--danger-soft:#fee2e2;--shadow-sm:0 1px 2px rgba(15,23,42,.04);--shadow:0 4px 12px rgba(15,23,42,.06);--shadow-lg:0 10px 30px rgba(15,23,42,.08);--radius:14px;--radius-sm:10px}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -234,7 +235,7 @@ html.dark .skeleton::after{background:linear-gradient(90deg,transparent,rgba(255
 .chip.active .count{background:rgba(255,255,255,.2)}
 .table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm)}
 .mon-table{width:100%;border-collapse:collapse;font-size:13px}
-.mon-table thead th{background:var(--surface-2);padding:12px 16px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);font-weight:700;border-bottom:1px solid var(--border)}
+.mon-table thead th{background:var(--surface-2);padding:12px 16px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);font-weight:700;border-bottom:1px solid var(--border);position:sticky;top:65px;z-index:5}
 .mon-table tbody tr.main{border-bottom:1px solid var(--border);cursor:pointer}
 .mon-table tbody tr.main:hover{background:var(--surface-2)}
 .mon-table tbody tr.main.expanded{background:var(--primary-soft)}
@@ -293,6 +294,12 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 .ap-pill.sem{background:#fee2e2;color:#b91c1c}
 .ap-pill.div{background:#fef3c7;color:#92400e}
 .ap-pill.ok{background:#dcfce7;color:#166534}
+.cfop-tip{position:relative;display:inline-block;font-family:'JetBrains Mono',monospace;cursor:pointer;border-bottom:1px dotted #94a3b8}
+.cfop-tip:hover{color:var(--primary)}
+.cfop-tip .cfop-desc{display:none;position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);background:#1e293b;color:#f8fafc;font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:500;padding:5px 10px;border-radius:6px;white-space:nowrap;z-index:100;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.25);max-width:350px}
+.cfop-tip .cfop-desc::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1e293b}
+.cfop-tip:hover .cfop-desc{display:block}
+#efd-tab-content table thead th{position:sticky;top:0;z-index:2}
 </style></head><body>
 
 <div id="login-screen"><div class="login-card">
@@ -317,38 +324,124 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div class="layout">
 <aside class="sidebar" id="sidebar">
 <div class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu" id="sb-toggle">◀</div>
-<div class="nav-section">Trabalho</div>
-<div class="nav-item active" onclick="navTo('upload',this)"><span>📂</span><span>Upload XMLs</span></div>
-<div class="nav-item" onclick="navTo('filtrosnfe',this)"><span>🔽</span><span>Filtros da NF-e</span></div>
-<div class="nav-section">Análise</div>
-<div class="nav-item" onclick="navTo('preauditoria',this)"><span>🔎</span><span>Monitoramento</span></div>
+<div class="nav-item active" onclick="navTo('home',this)"><span>🏠</span><span>Início</span></div>
+<div class="nav-section">Monitoramento</div>
+<div class="nav-item" onclick="navTo('autopecas',this)"><span>🔧</span><span>Autopeças</span></div>
+<div class="nav-item" onclick="navTo('veiculos',this)"><span>🚗</span><span>Veículos</span></div>
+<div class="nav-item" onclick="navTo('celulares',this)"><span>📱</span><span>Celulares</span></div>
+<div class="nav-section">Declarações</div>
+<div class="nav-item" onclick="navTo('efd',this)"><span>📊</span><span>EFD ICMS</span></div>
+<div class="nav-section">Outros</div>
 <div class="nav-item" onclick="navTo('relatorios',this)"><span>📝</span><span>Relatórios</span></div>
+<div class="nav-item" onclick="navTo('extrator',this)"><span>📤</span><span>Extrator NF-e</span></div>
 </aside>
 
 <main>
-<section class="section active" id="sec-upload">
-<h1>Upload de XMLs</h1>
-<p class="subtitle">Carregue arquivos .xml individuais ou .zip contendo XMLs de NF-e</p>
+<!-- ══ HOME DASHBOARD ══ -->
+<section class="section active" id="sec-home">
+<div style="max-width:900px;margin:0 auto">
+<div style="text-align:center;margin-bottom:32px">
+  <div style="font-size:36px;margin-bottom:8px">🎯</div>
+  <h1 style="font-size:28px;font-weight:800;margin-bottom:4px">Radar ST</h1>
+  <p style="color:var(--text-2);font-size:14px">Selecione uma ferramenta para começar a análise</p>
+</div>
+<div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-left:4px">Monitoramento ICMS-ST</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:28px">
+  <div class="mon-wcard" onclick="navTo('autopecas')" style="cursor:pointer;padding:24px 20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+    <div style="font-size:32px;margin-bottom:10px">🔧</div>
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Autopeças</div>
+    <div style="font-size:11px;color:var(--text-3);line-height:1.4">Protocolos 41/08, 97/10 · MVA por CEST · Conv. 06/09</div>
+  </div>
+  <div class="mon-wcard" onclick="navTo('veiculos')" style="cursor:pointer;padding:24px 20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+    <div style="font-size:32px;margin-bottom:10px">🚗</div>
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Veículos</div>
+    <div style="font-size:11px;color:var(--text-3);line-height:1.4">Conv. 51/00, 199/17, 64/06 · FUMACOP · PCD</div>
+  </div>
+  <div class="mon-wcard" onclick="navTo('celulares')" style="cursor:pointer;padding:24px 20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+    <div style="font-size:32px;margin-bottom:10px">📱</div>
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Celulares</div>
+    <div style="font-size:11px;color:var(--text-3);line-height:1.4">Conv. 213/17 · MVA 9% · Antecipação UFs</div>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+  <div onclick="navTo('efd')" style="cursor:pointer;padding:20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+    <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Declarações</div>
+    <div style="font-size:24px;margin-bottom:6px">📊</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text)">EFD ICMS</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Visualização e análise de EFD + cruzamento DIMP</div>
+  </div>
+  <div onclick="navTo('relatorios')" style="cursor:pointer;padding:20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+    <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Relatórios</div>
+    <div style="font-size:24px;margin-bottom:6px">📝</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text)">Quebra de Benefício</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Táxi, PCD — cálculo de ICMS desonerado</div>
+  </div>
+  <div onclick="navTo('extrator')" style="cursor:pointer;padding:20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+    <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Ferramentas</div>
+    <div style="font-size:24px;margin-bottom:6px">📤</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text)">Extrator NF-e</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Exportar campos customizados de XMLs para Excel</div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ══ MONITORAMENTO (compartilhado pelos 3 módulos) ══ -->
+<section class="section" id="sec-autopecas">
+<div id="mon-upload-area">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+    <h1 style="margin:0;flex:1" id="mon-titulo">🔧 Autopeças ICMS-ST</h1>
+  </div>
+  <p class="subtitle" id="mon-subtitulo">Análise de conformidade ICMS-ST em autopeças</p>
+  <div class="drop-zone" style="padding:2rem;max-width:600px;margin:0 auto" id="mon-drop"
+    ondrop="monOnDrop(event)" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')"
+    onclick="document.getElementById('mon-file-input').click()">
+    <div class="drop-icon">📂</div>
+    <div class="drop-label">Clique ou arraste XMLs / ZIP</div>
+    <div class="drop-hint">NF-e .xml ou .zip com múltiplas notas</div>
+  </div>
+  <input type="file" id="mon-file-input" accept=".xml,.zip" multiple style="display:none" onchange="monOnFile(this.files)">
+  <div id="mon-load-status" style="margin-top:12px;text-align:center"></div>
+</div>
+<div id="mon-analysis-area" style="display:none">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+    <h1 style="margin:0;flex:1" id="mon-titulo-res">🔧 Autopeças ICMS-ST</h1>
+    <button class="btn btn-secondary" style="font-size:11px;padding:6px 12px" id="mon-export-btn" onclick="exportarMon()">⬇️ Excel</button>
+    <button class="btn btn-danger" style="font-size:11px;padding:6px 12px" onclick="monLimpar()">🗑️ Limpar</button>
+  </div>
+  <div id="mon-empresa" style="display:none"></div>
+  <div id="mon-welcome"></div>
+  <div id="mon-results"></div>
+</div>
+</section>
+
+<section class="section" id="sec-veiculos"></section>
+<section class="section" id="sec-celulares"></section>
+
+<!-- ══ EXTRATOR NF-e ══ -->
+<section class="section" id="sec-extrator">
+<h1>📤 Extrator NF-e</h1>
+<p class="subtitle">Carregue XMLs de NF-e e exporte campos customizados para Excel</p>
 <div class="drop-zone" id="drop" onclick="document.getElementById('file-input').click()">
 <div class="drop-icon">📂</div>
 <div class="drop-label" id="drop-label">Clique ou arraste os arquivos aqui</div>
-<div class="drop-hint">Aceita .xml individuais ou .zip · <b>Ctrl+O</b> abre seleção · <b>Ctrl+E</b> exporta · <b>Esc</b> fecha detalhes</div>
+<div class="drop-hint">Aceita .xml individuais ou .zip · <b>Ctrl+O</b> abre seleção · <b>Ctrl+E</b> exporta</div>
 </div>
 <input type="file" id="file-input" accept=".xml,.zip" multiple>
 <div class="progress-wrap" id="prog-wrap">
 <div class="progress-bar-bg"><div class="progress-bar-fill" id="pbar"></div></div>
 <div class="progress-pct" id="ppct">0%</div>
 </div>
-<button class="btn btn-danger" id="btn-reset" style="display:none;margin:8px 0;font-size:12px;padding:7px 14px" onclick="resetarDados()">🗑️ Limpar dados e recomeçar</button>
-<button class="btn btn-secondary" id="btn-add-more" style="display:none;margin:8px 0 8px 6px;font-size:12px;padding:7px 14px" onclick="document.getElementById('file-input-add').click()">➕ Adicionar mais XMLs</button>
+<div style="display:flex;gap:8px;margin:8px 0">
+<button class="btn btn-danger" id="btn-reset" style="display:none;font-size:12px;padding:7px 14px" onclick="resetarDados()">🗑️ Limpar dados</button>
+<button class="btn btn-secondary" id="btn-add-more" style="display:none;font-size:12px;padding:7px 14px" onclick="document.getElementById('file-input-add').click()">➕ Adicionar mais XMLs</button>
+</div>
 <input type="file" id="file-input-add" accept=".xml,.zip" multiple style="display:none">
 <div class="log-toggle" id="log-toggle" onclick="document.getElementById('log').classList.toggle('collapsed');this.textContent=document.getElementById('log').classList.contains('collapsed')?'▶ Mostrar log de processamento':'▼ Ocultar log de processamento'">▼ Ocultar log de processamento</div>
 <div class="log-box" id="log"></div>
 <div id="upload-summary"></div>
-</section>
-
-<section class="section" id="sec-filtrosnfe"><h1>Filtros da NF-e</h1><p class="subtitle">Selecione quais campos das notas e itens serão exportados para o Excel — arraste para reordenar</p>
-<div style="display:flex;gap:10px;margin-bottom:16px;align-items:center">
+<div id="ext-fields" style="display:none">
+<div style="display:flex;gap:8px;align-items:center;margin:16px 0 12px">
 <button class="btn btn-primary" onclick="exportar()" style="padding:10px 22px;font-size:13px">⬇️ Exportar Excel</button>
 <span style="font-size:12px;color:var(--text-3)">Ctrl+E</span>
 </div>
@@ -367,17 +460,9 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div id="cx-groups"></div>
 <div class="cx-preview" id="cx-preview"></div>
 </div>
-</section>
-<section class="section" id="sec-preauditoria"><h1>Monitoramento</h1><p class="subtitle">Análise de conformidade ICMS-ST sobre os XMLs carregados</p><div class="mon-toolbar">
-<button class="mon-mod-btn" onclick="selMon('autopecas',this)">🔧 Autopeças ICMS-ST</button>
-<button class="mon-mod-btn" onclick="selMon('veiculos',this)">🚗 Veículos ICMS-ST</button>
-<button class="mon-mod-btn" onclick="selMon('celulares',this)">📱 Celulares ICMS-ST</button>
-<button class="mon-run" id="mon-run-btn" onclick="execMon()">▶ Executar monitoramento</button>
-<button class="btn btn-primary" id="mon-export-btn" onclick="exportarMon()" style="display:none;margin-left:8px;padding:9px 18px;font-size:13px">⬇️ Exportar monitoramento</button>
 </div>
-<div id="mon-empresa" style="display:none"></div>
-<div id="mon-welcome"></div>
-<div id="mon-results"></div></section>
+</section>
+
 
 <section class="section" id="sec-relatorios">
 <h1>Relatórios</h1>
@@ -425,9 +510,50 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 </div>
 </div>
 </section>
+
+<section class="section" id="sec-efd">
+<h1>EFD ICMS</h1>
+<p class="subtitle">Visualização e análise de Escrituração Fiscal Digital — EFD ICMS/IPI</p>
+
+<!-- Upload Area -->
+<div id="efd-upload-area">
+<div style="margin-bottom:20px">
+  <div class="drop-zone" id="efd-drop-efd" style="padding:2.5rem 1rem"
+    onclick="document.getElementById('efd-file-input').click()"
+    ondrop="efdOnDrop(event)" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')">
+    <div class="drop-icon">📄</div>
+    <div class="drop-label">EFD ICMS/IPI (.txt ou .zip)</div>
+    <div class="drop-hint">Arquivo SPED EFD · Aceita múltiplas competências · Arraste ou clique para selecionar</div>
+    <input type="file" id="efd-file-input" accept=".txt,.zip" multiple style="display:none" onchange="efdOnFiles(this.files)">
+  </div>
+</div>
+<div id="efd-files-status" style="display:none;margin-bottom:16px"></div>
+<div style="display:flex;gap:8px;align-items:center">
+  <button class="btn btn-primary" id="efd-process-btn" onclick="efdProcessar()" disabled style="padding:10px 24px;font-size:14px">▶ Processar EFD</button>
+</div>
+</div>
+
+<!-- Tabs de visualização (inicialmente escondidas) -->
+<div id="efd-tabs-area" style="display:none">
+<div id="efd-empresa-banner" style="margin-bottom:12px"></div>
+<div id="efd-dimp-card"></div>
+<input type="file" id="dimp-file-input" accept=".xlsx,.xls" style="display:none" onchange="efdOnDimpFile(this.files)">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+  <div id="efd-tabs" style="display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:10px;overflow-x:auto;flex:1"></div>
+  <button class="btn btn-secondary" onclick="efdExportar()" style="font-size:11px;padding:6px 14px;white-space:nowrap">📥 Excel</button>
+  <button class="btn btn-danger" onclick="efdResetar()" style="font-size:11px;padding:6px 14px;white-space:nowrap">🗑️</button>
+</div>
+<div id="efd-comp-filter" style="display:none;margin-bottom:16px"></div>
+<div id="efd-tab-content"></div>
+</div>
+
+<!-- Área para análises comportamentais (Fase 3) -->
+<div id="efd-analise-area" style="display:none"></div>
+
+</section>
 </main>
 </div>
-<footer class="app-footer">Radar ST · v3.0 · Atualizado em Abril/2026</footer>
+<footer class="app-footer">Radar ST · v3.1 · EFD integrado · Abril/2026</footer>
 </div>
 
 <script>
@@ -445,15 +571,83 @@ if(sessionStorage.getItem('nfe_auth')==='ok'){document.getElementById('login-scr
 
 function navTo(sec,el){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  if(el)el.classList.add('active');
+  if(el){el.classList.add('active');}
+  else{document.querySelectorAll('.nav-item').forEach(n=>{if(n.onclick&&n.onclick.toString().includes("'"+sec+"'"))n.classList.add('active');});}
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.getElementById('sec-'+sec).classList.add('active');
+  // Monitoring modules share sec-autopecas
+  const monMods=['autopecas','veiculos','celulares'];
+  const targetSec=monMods.includes(sec)?'autopecas':sec;
+  document.getElementById('sec-'+targetSec).classList.add('active');
+  if(monMods.includes(sec)) monSetModule(sec);
+  if(sec==='extrator'){const ef=document.getElementById('ext-fields');if(ef)ef.style.display=todasNotas.length?'block':'none';}
+}
+
+const MON_META={
+  autopecas:{icon:'🔧',titulo:'Autopeças ICMS-ST',desc:'Análise de conformidade ICMS-ST em autopeças (Protocolos 41/08, 97/10, MVA por CEST, Conv. 06/09).'},
+  veiculos:{icon:'🚗',titulo:'Veículos ICMS-ST',desc:'Monitoramento de ICMS-ST em veículos (Conv. 51/00, 199/17, 64/06, FUMACOP).'},
+  celulares:{icon:'📱',titulo:'Celulares ICMS-ST',desc:'Análise de conformidade ICMS-ST em celulares e smartphones (Conv. 213/17, MVA 9%).'}
+};
+
+function monSetModule(modulo){
+  const m=MON_META[modulo];if(!m)return;
+  const prevMod=monModulo;
+  monModulo=modulo;
+  const tit=document.getElementById('mon-titulo');if(tit)tit.textContent=m.icon+' '+m.titulo;
+  const sub=document.getElementById('mon-subtitulo');if(sub)sub.textContent=m.desc;
+  const titR=document.getElementById('mon-titulo-res');if(titR)titR.textContent=m.icon+' '+m.titulo;
+  // Se já tem resultados deste módulo, manter. Se mudou módulo ou sem resultados, mostrar upload.
+  const hasResults=document.getElementById('mon-results')?.innerHTML.trim().length>100;
+  if(hasResults&&prevMod===modulo){
+    document.getElementById('mon-upload-area').style.display='none';
+    document.getElementById('mon-analysis-area').style.display='block';
+  } else {
+    document.getElementById('mon-upload-area').style.display='block';
+    document.getElementById('mon-analysis-area').style.display='none';
+  }
+}
+
+async function monOnDrop(ev){
+  ev.preventDefault();ev.currentTarget.classList.remove('over');
+  if(ev.dataTransfer.files.length) await monOnFile(ev.dataTransfer.files);
+}
+
+async function monOnFile(files){
+  const st=document.getElementById('mon-load-status');
+  if(st)st.innerHTML='<div style="font-size:12px;color:var(--primary);font-weight:600">⏳ Carregando XMLs...</div>';
+  await processarEntrada(files,false);
+  atualizarKPIs();
+  monExecutar();
+}
+
+function monExecutar(){
+  if(!todasNotas.length){alert('Nenhum XML carregado.');return;}
+  document.getElementById('mon-upload-area').style.display='none';
+  document.getElementById('mon-analysis-area').style.display='block';
+  execMon();
+}
+
+function monLimpar(){
+  // Limpa dados mas mantém o módulo selecionado
+  todasNotas=[];todosItens=[];
+  paVeicResultados=[];paResultados=[];
+  document.getElementById('kpi-notas').textContent='0';
+  document.getElementById('kpi-itens').textContent='0';
+  const mr=document.getElementById('mon-results');if(mr)mr.innerHTML='';
+  const mw=document.getElementById('mon-welcome');if(mw){mw.innerHTML='';mw.style.display='none';}
+  const ef=document.getElementById('ext-fields');if(ef)ef.style.display='none';
+  const ua=document.getElementById('mon-upload-area');if(ua)ua.style.display='block';
+  const aa=document.getElementById('mon-analysis-area');if(aa)aa.style.display='none';
+  const ls=document.getElementById('mon-load-status');if(ls)ls.innerHTML='';
+  const fi=document.getElementById('mon-file-input');if(fi)fi.value='';
 }
 
 function addLog(msg,tipo){const el=document.getElementById('log');el.style.display='block';el.innerHTML+='<div class="'+tipo+'">'+msg+'</div>';el.scrollTop=el.scrollHeight;}
 function atualizarKPIs(){
   document.getElementById('kpi-notas').textContent=todasNotas.length;
   document.getElementById('kpi-itens').textContent=todosItens.length;
+  // Show extrator fields if XMLs loaded
+  const ef=document.getElementById('ext-fields');
+  if(ef)ef.style.display=todasNotas.length>0?'block':'none';
 }
 
 /* === LÓGICA PRESERVADA (parser, ZIP, audit, export) — INSERIDA VIA BASH === */
@@ -3531,50 +3725,18 @@ function renderEmpresaBanner(){
 
 function renderMonWelcome(){
   detectarEmpresaAnalisada();
-  const el=document.getElementById('mon-welcome');
-  if(!el)return;
-  // Count potential items per module
-  let nAuto=0,nVeic=0,nCel=0;
-  if(todasNotas.length){
-    const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
-    nAuto=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTAutopecas(it.CEST)||isNCMAutopecas(it.NCM));}).length;
-    nVeic=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTVeiculo(it.CEST)||isNCMVeiculo(it.NCM));}).length;
-    nCel=todosItens.filter(it=>{const n=notaMap.get(it.chave);return n&&n.ufEmissao!=='MA'&&(isCESTCelular(it.CEST)||isNCMCelular(it.NCM));}).length;
-  }
-  const badgeAuto=todasNotas.length?nAuto+' item(ns) potencial(is)':'Carregue XMLs para analisar';
-  const badgeVeic=todasNotas.length?nVeic+' item(ns) potencial(is)':'Carregue XMLs para analisar';
-  const badgeCel=todasNotas.length?nCel+' item(ns) potencial(is)':'Carregue XMLs para analisar';
-
-  el.innerHTML=`<div class="mon-welcome" style="grid-template-columns:1fr 1fr 1fr">
-    <div class="mon-wcard" onclick="selMon('autopecas',document.querySelectorAll('.mon-mod-btn')[0])">
-      <div class="wicon">🔧</div>
-      <div class="wtitle">Autopeças ICMS-ST</div>
-      <div class="wdesc">Verifica retenção e cálculo de MVA para itens de autopeças (Conv. 142/18, Anexo 4.41 RICMS/MA). Detecta itens sem retenção e divergências de MVA original/ajustada.</div>
-      <div class="wbadge">${badgeAuto}</div>
-    </div>
-    <div class="mon-wcard" onclick="selMon('veiculos',document.querySelectorAll('.mon-mod-btn')[1])">
-      <div class="wicon">🚗</div>
-      <div class="wtitle">Veículos ICMS-ST</div>
-      <div class="wdesc">Analisa conformidade de veículos novos (Conv. 199/17 e 51/00), redução de BC, carga efetiva de 12%, coeficientes de repartição e incidência FUMACOP.</div>
-      <div class="wbadge">${badgeVeic}</div>
-    </div>
-    <div class="mon-wcard" onclick="selMon('celulares',document.querySelectorAll('.mon-mod-btn')[2])">
-      <div class="wicon">📱</div>
-      <div class="wtitle">Celulares ICMS-ST</div>
-      <div class="wdesc">Verifica retenção ST em operações com aparelhos celulares e cartões inteligentes (Conv. 213/17). MVA 9%. Detecta celulares usados/recondicionados.</div>
-      <div class="wbadge">${badgeCel}</div>
-    </div>
-  </div>`;
-  el.style.display='block';
+  // No new flow, welcome is handled by monSetModule/monLimpar
+  // This function just updates detectarEmpresaAnalisada
 }
 renderMonWelcome();
 
 // Override selMon to hide welcome
+// selMon override: reset pagination on module change
 const _origSelMon=selMon;
 selMon=function(m,el){
   monBusca='';monPagina=1;
-  _origSelMon(m,el);
-  document.getElementById('mon-welcome').style.display='none';
+  _origSelMon(m,el||{classList:{add:()=>{},remove:()=>{}}});
+  const w=document.getElementById('mon-welcome');if(w)w.style.display='none';
 };
 
 /* ══════════ MÓDULO RELATÓRIOS ══════════ */
@@ -3973,6 +4135,1400 @@ function relCopiarCampo(id,btn){
     btn.textContent='✓';
     setTimeout(()=>{btn.textContent='📋';},1500);
   }).catch(()=>{});
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MÓDULO: EFD ICMS — Visualizador e Análise
+   ════════════════════════════════════════════════════════════ */
+
+const EFD_STATE={
+  efdFiles:[],
+  dimpFile:null,
+  efdData:[],
+  dimpData:null,
+  empresa:null,
+  consolidated:null,
+  tabAtual:'resumo',
+  compFiltro:'todos',
+  docFiltro:'todos', // todos|saidas|entradas
+  docBusca:'',
+  docPagina:1,
+  docPorPag:50,
+  alertas:[],
+};
+
+function efdGerarAlertas(){
+  const con=EFD_STATE.consolidated;if(!con)return;
+  const a=[];const comps=Object.keys(con.porComp).sort();
+  const ff=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  // DIMP
+  if(EFD_STATE.dimpData){
+    const totEfd=comps.reduce((s,k)=>s+con.porComp[k].vl_venda,0);
+    const totDimp=EFD_STATE.dimpData.registros.reduce((s,r)=>classificaDimp(r)==='entrada'?s+r.valor:s,0);
+    const razao=totEfd>0?(totDimp/totEfd):0;
+    if(razao>1.5)a.push({nivel:'alto',tab:'dimp',msg:'DIMP '+razao.toFixed(1)+'× acima do faturamento — excedente R$ '+ff(totDimp-totEfd)});
+  }
+  // Benford
+  const vals=[];comps.forEach(k=>{(con.porComp[k].saidasC100||[]).forEach(d=>{if(d.vl_doc>0)vals.push(d.vl_doc);});});
+  if(vals.length>30){
+    const bE=[0,30.1,17.6,12.5,9.7,7.9,6.7,5.8,5.1,4.6];
+    const dc=new Array(10).fill(0);vals.forEach(v=>{const d=parseInt(String(Math.abs(v))[0]);if(d>=1)dc[d]++;});
+    const tot=dc.slice(1).reduce((s,v)=>s+v,0);
+    for(let d=1;d<=9;d++){const obs=(dc[d]/tot)*100;if(Math.abs(obs-bE[d])>5)a.push({nivel:'medio',tab:'padroes',msg:'Benford: dígito '+d+' com '+obs.toFixed(1)+'% (esp. '+bE[d]+'%)'});}
+  }
+  // Gaps
+  const allSai=[];comps.forEach(k=>{const efd=EFD_STATE.efdData.find(e=>e.competencia===parseInt(k));if(efd)efd.c100.filter(c=>c.ind_oper==='1'&&c.ind_emit==='0').forEach(c=>allSai.push(c));});
+  const serGrp={};allSai.forEach(d=>{const k=(d.cod_mod||'55')+'/'+(d.ser||'1');if(!serGrp[k])serGrp[k]=[];serGrp[k].push(parseInt(d.num_doc));});
+  Object.entries(serGrp).forEach(([key,nums])=>{const u=[...new Set(nums)].sort((a,b)=>a-b);let gN=0;for(let i=1;i<u.length;i++)if(u[i]-u[i-1]>1)gN+=u[i]-u[i-1]-1;if(gN>10)a.push({nivel:'medio',tab:'padroes',msg:gN+' nºs faltando na série '+key});});
+  // ST zerado
+  const stZ=comps.filter(k=>{const e=con.porComp[k].e210;return e&&e.vl_icms_recol_st===0&&e.vl_retencao_st===0;});
+  if(stZ.length>0&&stZ.length<comps.length)a.push({nivel:'medio',tab:'apuracaost',msg:'ICMS-ST zerado em '+stZ.length+' de '+comps.length+' competências'});
+  // Markup negativo
+  const mkN=comps.filter(k=>{const p=con.porComp[k];return p.vl_compra>0&&p.vl_venda<p.vl_compra;});
+  if(mkN.length>0)a.push({nivel:'baixo',tab:'estoque',msg:'Markup negativo em '+mkN.length+' mês(es)'});
+  // Valores redondos
+  if(vals.length>10){const r00=vals.filter(v=>Math.abs(v-Math.round(v))<0.01).length;if((r00/vals.length)>0.5)a.push({nivel:'baixo',tab:'padroes',msg:(r00/vals.length*100).toFixed(0)+'% dos valores terminam em ,00'});}
+  EFD_STATE.alertas=a;
+}
+
+/* --- Helpers --- */
+function efdNum(s){
+  if(s==null)return 0;if(typeof s==='number')return s;
+  const v=String(s).trim().replace(/\./g,'').replace(',','.');
+  const n=parseFloat(v);return isNaN(n)?0:n;
+}
+function readFileLatin1(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=reject;
+    reader.readAsText(file,'ISO-8859-1');
+  });
+}
+
+/* --- CFOP tables --- */
+const EFD_CFOP_DESC={"1101":"Compra para industrialização","1102":"Compra para comercialização","1113":"Compra p/ comercialização - NF única","1116":"Compra para comercialização originada de encomenda","1117":"Compra para comercialização por conta e ordem","1124":"Industrialização efetuada por terceiros","1125":"Industrialização - insumo pelo encomendante","1201":"Devolução de venda de produção","1202":"Devolução de venda de mercadoria","1203":"Devolução de venda ST","1403":"Compra p/ comercialização ST (substituído)","1409":"Compra para comercialização, em operação com ST","1411":"Devolução de venda ST","1551":"Compra de bem para o ativo imobilizado","1556":"Compra material para uso e consumo","2101":"Compra para industrialização (interestadual)","2102":"Compra p/ comercialização (interestadual)","2202":"Devolução de venda (interestadual)","2403":"Compra ST interestadual","2411":"Devolução ST interestadual","2556":"Compra material uso/consumo interestadual","2949":"Outras entradas não especificadas","3101":"Compra para industrialização (importação)","3102":"Compra para comercialização (importação)","5101":"Venda de produção do estabelecimento","5102":"Venda de mercadoria adquirida de terceiros","5103":"Venda de produção - varejista","5104":"Venda de mercadoria a comerciante varejista","5109":"Venda de produção destinada à Zona Franca","5110":"Venda à Zona Franca - mercadoria de terceiros","5111":"Venda de produção remetida anteriormente","5112":"Venda mercadoria adquirida remetida anteriormente","5113":"Venda de produção, originada de encomenda","5114":"Venda mercadoria p/ entrega posterior","5115":"Venda mercadoria - trânsito","5116":"Venda de produção - entrega posterior","5117":"Venda - mercadoria por conta e ordem","5118":"Venda produção não entregue","5119":"Venda produção - entregue ao adquirente","5120":"Venda mercadoria 3os - entrega ao adquirente","5151":"Transferência de produção","5152":"Transferência de mercadoria","5155":"Transferência p/ industrialização","5156":"Transferência insumo industrialização","5201":"Devolução de compra produção","5202":"Devolução de compra p/ comercialização","5401":"Venda de produção ST (substituto)","5402":"Venda de produção ST interestadual","5403":"Venda mercadoria ST (substituto)","5405":"Venda mercadoria ST já retido","5409":"Remessa em transferência ST","5411":"Devolução compra ST","5415":"Industrialização ST","5551":"Venda bem imobilizado","5552":"Transferência bem imobilizado","5556":"Devolução compra material uso/consumo","5910":"Remessa bonificação/doação/brinde","5911":"Remessa de amostra grátis","5912":"Remessa p/ demonstração","5913":"Retorno de demonstração","5915":"Remessa p/ conserto","5916":"Retorno de conserto","5917":"Remessa mercadoria em consignação","5918":"Devolução consignação","5920":"Remessa vasilhame","5921":"Devolução vasilhame","5923":"Remessa p/ ordem terceiros","5924":"Remessa p/ entrega futura","5926":"Lançamento NF-e referente a entrada","5927":"Lançamento baixa de estoque","5929":"Lançamento relativo a ECF ou SAT","5949":"Outra saída não especificada","6101":"Venda produção interestadual","6102":"Venda mercadoria interestadual","6107":"Venda mercadoria não contribuinte","6108":"Venda mercadoria não contribuinte","6109":"Venda produção Zona Franca","6110":"Venda mercadoria Zona Franca","6111":"Venda produção remetida ant.","6112":"Venda mercadoria 3os - remessa ant.","6113":"Venda produção - encomenda","6114":"Venda mercadoria - entrega futura","6115":"Venda mercadoria em trânsito","6116":"Venda produção entrega posterior","6117":"Venda mercadoria conta e ordem","6118":"Venda produção não entregue","6119":"Venda produção entregue adquirente","6120":"Venda mercadoria 3os - entregue adquirente","6151":"Transf. produção interestadual","6152":"Transf. mercadoria interestadual","6201":"Devolução compra produção interestadual","6202":"Devolução compra comercialização interestadual","6401":"Venda produção ST interestadual","6402":"Venda produção ST interest. - subst.","6403":"Venda mercadoria ST interestadual","6404":"Venda mercadoria ST já retido interestadual","6409":"Remessa transf. ST interestadual","6411":"Devolução compra ST interestadual","6910":"Remessa bonificação interestadual","6911":"Remessa amostra interestadual","6912":"Remessa demonstração interestadual","6915":"Remessa mercadoria/bem p/ conserto","6917":"Remessa consignação interestadual","6929":"Lançamento ECF/SAT interestadual","6949":"Outra saída interestadual não especificada","7101":"Venda produção para exterior","7102":"Venda mercadoria p/ exterior"};
+function cfopTip(c){return EFD_CFOP_DESC[c]||'CFOP '+c;}
+function cfopHtml(c){return '<span class="cfop-tip">'+c+'<span class="cfop-desc">'+c+' — '+cfopTip(c)+'</span></span>';}
+const EFD_CFOP_VENDA=new Set(["5101","5102","5103","5104","5109","5110","5111","5112","5113","5114","5115","5116","5117","5118","5119","5120","5401","5402","5403","5405","5656","5929","6101","6102","6107","6108","6109","6110","6111","6112","6113","6114","6115","6116","6117","6118","6119","6120","6401","6402","6403","6404","6405","6656","6929","7101","7102"]);
+const EFD_CFOP_DEVOL_VENDA=new Set(["1201","1202","1203","1204","1410","1411","1503","1553","1660","1661","1662","2201","2202","2203","2204","2410","2411","2503","2553","2660","2661","2662","3201","3202","3211","3503","3553"]);
+const EFD_CFOP_COMPRA=new Set(["1101","1102","1113","1116","1117","1403","1409","2101","2102","2113","2116","2117","2403","2409","3101","3102"]);
+const EFD_CFOP_TRANSF_SAIDA=new Set(["5151","5152","5153","5155","5156","6151","6152","6153","6155","6156"]);
+const EFD_CFOP_REMESSA=new Set(["5910","5911","5912","5915","5917","5920","5923","5924","5926","6910","6911","6912","6917","6920","6923","6924","6926"]);
+const EFD_CFOP_USO_CONSUMO=new Set(["1556","2556","1557","2557"]);
+const EFD_CFOP_IMOBILIZADO=new Set(["1551","2551","1552","2552","1553","2553","1554","2554"]);
+const EFD_COD_SIT_VALIDO=new Set(["00","01","06","07","08"]);
+
+/* --- Parser EFD SPED --- */
+async function parseEFD(file){
+  const text=await readFileLatin1(file);
+  const lines=text.split(/\r?\n/);
+  const result={
+    fileName:file.name,abertura:null,
+    participantes:new Map(),itens:new Map(),
+    c100:[],c170:[],c190:[],c195:[],c197:[],
+    e110:null,e111:[],e113:[],e116:[],
+    e210:null,e220:[],e240:[],e250:[],
+    h010:[],competencia:null,
+  };
+  let cur_c100=null,cur_e111=null,cur_e220=null;
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];if(!line.startsWith('|'))continue;
+    const p=line.split('|');if(p.length<3)continue;
+    switch(p[1]){
+      case '0000':
+        result.abertura={cod_ver:p[2],cod_fin:p[3],dt_ini:p[4],dt_fin:p[5],nome:p[6],cnpj:p[7],cpf:p[8]||'',uf:p[9],ie:p[10],cod_mun:p[11],im:p[12]||'',suframa:p[13]||'',ind_perfil:p[14],ind_ativ:p[15]};
+        result.competencia=parseInt(p[4].slice(4,8)+p[4].slice(2,4));
+        break;
+      case '0150':
+        result.participantes.set(p[2],{nome:p[3],cod_pais:p[4],cnpj:p[5],cpf:p[6],ie:p[7],cod_mun:p[8],suframa:p[9]});
+        break;
+      case '0200':
+        result.itens.set(p[2],{descr:p[3],un_inv:p[6],tipo:p[7],ncm:p[8]||'',cest:p[13]||'',aliq:efdNum(p[12])});
+        break;
+      case 'C100':{
+        const c={ind_oper:p[2],ind_emit:p[3],cod_part:p[4],cod_mod:p[5],cod_sit:p[6],ser:p[7],num_doc:p[8],chv_nfe:p[9],dt_doc:p[10],dt_e_s:p[11],vl_doc:efdNum(p[12]),ind_pgto:p[13],vl_desc:efdNum(p[14]),vl_merc:efdNum(p[16]),vl_frt:efdNum(p[18]),vl_seg:efdNum(p[19]),vl_out_da:efdNum(p[20]),vl_bc_icms:efdNum(p[21]),vl_icms:efdNum(p[22]),vl_bc_icms_st:efdNum(p[23]),vl_icms_st:efdNum(p[24]),vl_ipi:efdNum(p[25]),vl_pis:efdNum(p[26]),vl_cofins:efdNum(p[27]),competencia:result.competencia,itens:[],c190s:[]};
+        result.c100.push(c);cur_c100=c;break;}
+      case 'C170':{
+        if(!cur_c100)break;
+        const it={num_item:p[2],cod_item:p[3],qtd:efdNum(p[5]),unid:p[6],vl_item:efdNum(p[7]),vl_desc:efdNum(p[8]),cfop:p[11]||'',vl_bc_icms:p.length>14?efdNum(p[14]):0,aliq_icms:p.length>15?efdNum(p[15]):0,vl_icms:p.length>16?efdNum(p[16]):0,chv_nfe:cur_c100.chv_nfe,num_doc:cur_c100.num_doc,ind_oper:cur_c100.ind_oper,cod_part:cur_c100.cod_part,dt_doc:cur_c100.dt_doc,competencia:result.competencia};
+        cur_c100.itens.push(it);result.c170.push(it);break;}
+      case 'C190':
+        {const c190Rec={cst_icms:p[2],cfop:p[3],aliq_icms:efdNum(p[4]),vl_opr:efdNum(p[5]),vl_bc_icms:efdNum(p[6]),vl_icms:efdNum(p[7]),vl_bc_icms_st:efdNum(p[8]),vl_icms_st:efdNum(p[9]),vl_red_bc:efdNum(p[10]),vl_ipi:efdNum(p[11]),competencia:result.competencia,chv_nfe:cur_c100?.chv_nfe,num_doc:cur_c100?.num_doc,ind_oper:cur_c100?.ind_oper};
+        result.c190.push(c190Rec);
+        if(cur_c100)cur_c100.c190s.push(c190Rec);}
+        break;
+      case 'C197':
+        if(!cur_c100)break;
+        result.c197.push({cod_aj:p[2],descr:p[3]||'',cod_item:p[4]||'',vl_bc_icms:efdNum(p[5]),aliq_icms:efdNum(p[6]),vl_icms:efdNum(p[7]),vl_outros:efdNum(p[8]),chv_nfe:cur_c100.chv_nfe,num_doc:cur_c100.num_doc,competencia:result.competencia});
+        break;
+      case 'E110':
+        result.e110={vl_tot_debitos:efdNum(p[2]),vl_aj_debitos:efdNum(p[3]),vl_totaj_debitos:efdNum(p[4]),vl_tot_creditos:efdNum(p[5]),vl_aj_creditos:efdNum(p[6]),vl_totaj_creditos:efdNum(p[7]),vl_estornos_cred:efdNum(p[8]),vl_estornos_deb:efdNum(p[9]),vl_sld_credor_ant:efdNum(p[10]),vl_sld_apurado:efdNum(p[11]),vl_tot_ded:efdNum(p[12]),vl_icms_recolher:efdNum(p[13]),vl_sld_credor_transportar:efdNum(p[14])};
+        break;
+      case 'E111':{
+        const aj={cod_aj_apur:p[2],descr:p[3]||'',vl_aj_apur:efdNum(p[4]),competencia:result.competencia,docs_ref:[]};
+        result.e111.push(aj);cur_e111=aj;break;}
+      case 'E113':
+        if(!cur_e111)break;
+        {const ref={cod_part:p[2],cod_mod:p[3],ser:p[4],num_doc:p[6],dt_doc:p[7],cod_item:p[8],vl_aj_item:efdNum(p[9]),chv_doc:p[10]||'',competencia:result.competencia};
+        cur_e111.docs_ref.push(ref);result.e113.push(ref);}
+        break;
+      case 'E116':
+        result.e116.push({cod_or:p[2],vl_or:efdNum(p[3]),dt_vcto:p[4],cod_rec:p[5],num_proc:p[6]||'',ind_proc:p[7]||'',proc:p[8]||'',txt_compl:p[9]||'',mes_ref:p[10]||'',competencia:result.competencia});
+        break;
+      case 'E210':
+        result.e210={ind_mov_st:p[2],vl_sld_cred_ant_st:efdNum(p[3]),vl_devol_st:efdNum(p[4]),vl_ressarc_st:efdNum(p[5]),vl_out_cred_st:efdNum(p[6]),vl_aj_creditos_st:efdNum(p[7]),vl_retencao_st:efdNum(p[8]),vl_out_deb_st:efdNum(p[9]),vl_aj_debitos_st:efdNum(p[10]),vl_sld_dev_ant_st:efdNum(p[11]),vl_ded_st:efdNum(p[12]),vl_icms_recol_st:efdNum(p[13]),vl_sld_cred_st_transportar:efdNum(p[14]),deb_esp_st:efdNum(p[15])};
+        break;
+      case 'E220':{
+        const aj={cod_aj_apur:p[2],descr:p[3]||'',vl_aj_apur:efdNum(p[4]),competencia:result.competencia,docs_ref:[]};
+        result.e220.push(aj);cur_e220=aj;break;}
+      case 'E240':
+        if(!cur_e220)break;
+        {const ref={cod_part:p[2],cod_mod:p[3],ser:p[4],num_doc:p[6],dt_doc:p[7],cod_item:p[8],vl_aj_item:efdNum(p[9]),chv_doc:p[10]||'',competencia:result.competencia};
+        cur_e220.docs_ref.push(ref);result.e240.push(ref);}
+        break;
+      case 'E250':
+        result.e250.push({cod_or:p[2],vl_or:efdNum(p[3]),dt_vcto:p[4],cod_rec:p[5],num_proc:p[6]||'',ind_proc:p[7]||'',proc:p[8]||'',txt_compl:p[9]||'',mes_ref:p[10]||'',competencia:result.competencia});
+        break;
+      case 'H010':
+        result.h010.push({cod_item:p[2],unid:p[3],qtd:efdNum(p[4]),vl_unit:efdNum(p[5]),vl_item:efdNum(p[6]),ind_prop:p[7],cod_part:p[8],txt_compl:p[9]||'',competencia:result.competencia});
+        break;
+    }
+  }
+  return result;
+}
+
+/* --- Parser DIMP --- */
+function normHeader(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();}
+const EFD_DIMP_ALIASES={
+  cnpj_estab:['cnpj do estabelecimento credenciado, ou do importador (comex)','cnpj do estabelecimento'],
+  periodo:['periodo a que se referem as transacoes consolidadas (aaaamm)','periodo da operacao','periodo'],
+  nome_inst:['nome empresarial (razao social/denominacao) da instituicao','nome empresarial','instituicao'],
+  natureza:['natureza da operacao','nat_oper_1115','natureza'],
+  valor:['valor total das operacoes','valor_1115','valor'],
+  qtd_ops:['quantidade de operacoes'],
+  ind_pix:['indicador de tipo de pix','ind_pix'],
+};
+function detectDimpLayout(headerRow){
+  const colMap={};const hdrNorm=headerRow.map(h=>normHeader(h));
+  for(const campo in EFD_DIMP_ALIASES){for(const alias of EFD_DIMP_ALIASES[campo]){const idx=hdrNorm.indexOf(alias);if(idx!==-1){colMap[campo]=idx;break;}}}
+  let tipo='DESCONHECIDO';
+  if(colMap.ind_pix!==undefined)tipo='IF';
+  else if(hdrNorm.some(h=>h.includes('1115')))tipo='ADQUIRENTE';
+  else if(colMap.natureza!==undefined&&colMap.valor!==undefined)tipo='GENERICO';
+  return{tipo,colMap};
+}
+async function parseDIMP(file){
+  const buffer=await file.arrayBuffer();
+  const wb=XLSX.read(buffer,{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
+  if(rows.length<2)return{fileName:file.name,tipo:'VAZIO',registros:[]};
+  const{tipo,colMap}=detectDimpLayout(rows[0]);
+  if(colMap.natureza===undefined||colMap.valor===undefined)return{fileName:file.name,tipo:'DESCONHECIDO',registros:[]};
+  const get=(row,campo)=>{const idx=colMap[campo];return(idx===undefined)?null:row[idx];};
+  const registros=[];
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i];if(!r||r.every(v=>v==null))continue;
+    const periodo=parseInt(get(r,'periodo'));if(!periodo)continue;
+    const indPixRaw=get(r,'ind_pix');
+    registros.push({cnpj_estab:String(get(r,'cnpj_estab')||'').replace(/\D/g,''),periodo,nome_inst:get(r,'nome_inst'),natureza:parseInt(get(r,'natureza'))||0,valor:efdNum(get(r,'valor')),qtd_ops:parseInt(get(r,'qtd_ops'))||0,ind_pix:(indPixRaw==null||indPixRaw==='')?-1:parseInt(indPixRaw)});
+  }
+  return{fileName:file.name,tipo,registros};
+}
+function classificaDimp(reg){
+  switch(reg.natureza){case 1:case 2:case 3:case 7:return'entrada';case 4:return'saida';case 6:return reg.ind_pix===1?'entrada':'saida';default:return'ignorar';}
+}
+function consolidateDimp(parsedList){
+  const byComp={};const todosRegistros=[];
+  for(const p of parsedList){
+    for(const d of p.registros){
+      todosRegistros.push(d);
+      if(!byComp[d.periodo])byComp[d.periodo]={entradas:0,saidas:0,volumeBruto:0,registros:[]};
+      const b=byComp[d.periodo];b.registros.push(d);b.volumeBruto+=d.valor;
+      const cls=classificaDimp(d);
+      if(cls==='entrada')b.entradas+=d.valor;else if(cls==='saida')b.saidas+=d.valor;
+    }
+  }
+  return{byComp,registros:todosRegistros};
+}
+
+/* --- Consolidação EFD --- */
+function consolidateEFD(efdList){
+  efdList.sort((a,b)=>a.competencia-b.competencia);
+  const empresa={cnpj:efdList[0].abertura.cnpj,nome:efdList[0].abertura.nome,ie:efdList[0].abertura.ie,uf:efdList[0].abertura.uf,cod_mun:efdList[0].abertura.cod_mun,ind_perfil:efdList[0].abertura.ind_perfil,ind_ativ:efdList[0].abertura.ind_ativ,periodos:efdList.map(e=>e.competencia)};
+  const porComp={};const allParticipantes=new Map();const allItensCad=new Map();const h010All=[];
+  for(const efd of efdList){
+    efd.participantes.forEach((v,k)=>allParticipantes.set(k,v));
+    efd.itens.forEach((v,k)=>allItensCad.set(k,v));
+    efd.h010.forEach(h=>h010All.push({...h,competencia:efd.competencia}));
+    const comp=efd.competencia;
+    const saidasC100=efd.c100.filter(c=>c.ind_oper==='1'&&c.ind_emit==='0'&&EFD_COD_SIT_VALIDO.has(c.cod_sit));
+    const entradasC100=efd.c100.filter(c=>c.ind_oper==='0'&&EFD_COD_SIT_VALIDO.has(c.cod_sit));
+    const c190saidas=efd.c190.filter(c=>/^[567]/.test(c.cfop));
+    const c190entradas=efd.c190.filter(c=>/^[123]/.test(c.cfop));
+    const vl_venda=c190saidas.filter(c=>EFD_CFOP_VENDA.has(c.cfop)).reduce((s,c)=>s+c.vl_opr,0);
+    const vl_devol_venda=c190entradas.filter(c=>EFD_CFOP_DEVOL_VENDA.has(c.cfop)).reduce((s,c)=>s+c.vl_opr,0);
+    const vl_compra=c190entradas.filter(c=>EFD_CFOP_COMPRA.has(c.cfop)).reduce((s,c)=>s+c.vl_opr,0);
+    const cfopAgg={};
+    efd.c190.forEach(c=>{if(!cfopAgg[c.cfop])cfopAgg[c.cfop]={vl_opr:0,vl_icms:0,vl_bc_st:0,vl_icms_st:0,qtd:0};cfopAgg[c.cfop].vl_opr+=c.vl_opr;cfopAgg[c.cfop].vl_icms+=c.vl_icms;cfopAgg[c.cfop].vl_bc_st+=c.vl_bc_icms_st;cfopAgg[c.cfop].vl_icms_st+=c.vl_icms_st;cfopAgg[c.cfop].qtd++;});
+    const destMap={};
+    saidasC100.forEach(c=>{const pr=allParticipantes.get(c.cod_part)||{};const key=c.cod_part;if(!destMap[key])destMap[key]={cod_part:key,nome:pr.nome||'?',cnpj:pr.cnpj||'',mun:pr.cod_mun||'',qtd:0,valor:0};destMap[key].qtd++;destMap[key].valor+=c.vl_doc;});
+    porComp[comp]={competencia:comp,dt_ini:efd.abertura.dt_ini,dt_fin:efd.abertura.dt_fin,qtdSaidas:saidasC100.length,qtdEntradas:entradasC100.length,saidasC100,entradasC100,fat_c100:saidasC100.reduce((s,c)=>s+c.vl_doc,0),fat_liquido:vl_venda-vl_devol_venda,vl_venda,vl_devol_venda,vl_compra,icms_proprio:c190saidas.reduce((s,c)=>s+c.vl_icms,0),icms_st_retido:c190saidas.reduce((s,c)=>s+c.vl_icms_st,0),cfopAgg,destMap,e110:efd.e110,e111:efd.e111,e116:efd.e116,e210:efd.e210,e220:efd.e220,e250:efd.e250};
+  }
+  return{empresa,porComp,allParticipantes,allItensCad,h010All};
+}
+
+async function efdOnDrop(ev){
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('over');
+  const files=ev.dataTransfer.files;
+  if(files.length) await efdOnFiles(files);
+}
+
+async function efdOnFiles(files){
+  for(const f of Array.from(files)){
+    if(f.name.toLowerCase().endsWith('.zip')){
+      try{
+        const zip=await JSZip.loadAsync(f);
+        const entries=[];
+        zip.forEach((path,entry)=>{
+          if(!entry.dir&&path.toLowerCase().endsWith('.txt'))
+            entries.push(entry.async('blob').then(blob=>new File([blob],path.split('/').pop(),{type:'text/plain'})));
+        });
+        const extracted=await Promise.all(entries);
+        EFD_STATE.efdFiles.push(...extracted);
+      }catch(e){alert('Erro ao extrair ZIP: '+e.message);}
+    } else {
+      EFD_STATE.efdFiles.push(f);
+    }
+  }
+  efdAtualizarStatus();
+}
+
+function efdAtualizarStatus(){
+  const el=document.getElementById('efd-files-status');
+  const nEfd=EFD_STATE.efdFiles.length;
+  if(!nEfd){el.style.display='none';document.getElementById('efd-process-btn').disabled=true;return;}
+  el.style.display='block';
+  const nomes=EFD_STATE.efdFiles.map(f=>f.name);
+  const display=nomes.length<=5?nomes.join(', '):nomes.slice(0,5).join(', ')+' e mais '+(nomes.length-5);
+  el.innerHTML='<div style="padding:8px 14px;background:var(--primary-soft);border:1px solid var(--primary);border-radius:8px;font-size:12px;color:var(--primary);font-weight:600">📄 '+nEfd+' arquivo(s) EFD: '+display+'</div>';
+  document.getElementById('efd-process-btn').disabled=false;
+}
+
+async function efdProcessar(){
+  if(!EFD_STATE.efdFiles.length){alert('Carregue pelo menos um arquivo EFD.');return;}
+  const btn=document.getElementById('efd-process-btn');
+  btn.disabled=true;btn.textContent='⏳ Processando...';
+  
+  try{
+    // Parse EFDs
+    EFD_STATE.efdData=[];
+    for(const f of EFD_STATE.efdFiles){
+      btn.textContent='⏳ Parseando '+f.name+'...';
+      const parsed=await parseEFD(f);
+      if(parsed.abertura) EFD_STATE.efdData.push(parsed);
+      await new Promise(r=>setTimeout(r,0));
+    }
+    if(!EFD_STATE.efdData.length){alert('Nenhum arquivo EFD válido encontrado.');btn.textContent='▶ Processar EFD';btn.disabled=false;return;}
+    
+    // Consolidar
+    btn.textContent='⏳ Consolidando...';
+    await new Promise(r=>setTimeout(r,0));
+    EFD_STATE.consolidated=consolidateEFD(EFD_STATE.efdData);
+    EFD_STATE.empresa=EFD_STATE.consolidated.empresa;
+    
+    btn.textContent='✓ Processado';
+    
+    document.getElementById('efd-upload-area').style.display='none';
+    document.getElementById('efd-tabs-area').style.display='block';
+    
+    // Render empresa banner
+    const e=EFD_STATE.empresa;
+    const cnpjFmt=e.cnpj&&e.cnpj.length===14?e.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5'):e.cnpj;
+    const perStr=e.periodos.map(p=>{const s=String(p);return s.slice(4,6)+'/'+s.slice(0,4);}).join(', ');
+    document.getElementById('efd-empresa-banner').innerHTML=`<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--primary-soft);border:1.5px solid var(--primary);border-radius:10px">
+      <span style="font-size:24px">🏢</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Empresa analisada</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.nome}</div>
+        <div style="font-size:12px;color:var(--text-2);margin-top:1px">CNPJ ${cnpjFmt} · IE ${e.ie||'—'} · ${e.uf} · ${e.periodos.length} competência(s): ${perStr}</div>
+      </div>
+    </div>`;
+    
+    efdGerarAlertas();
+    efdRenderDimpCard();
+    efdRenderTab();
+  }catch(err){
+    alert('Erro ao processar EFD: '+err.message);
+    console.error(err);
+    btn.textContent='▶ Processar EFD';btn.disabled=false;
+  }
+}
+
+function efdResetar(){
+  EFD_STATE.efdFiles=[];
+  EFD_STATE.dimpFile=null;
+  EFD_STATE.efdData=[];
+  EFD_STATE.dimpData=null;
+  EFD_STATE.empresa=null;
+  EFD_STATE.compFiltro='todos';
+  EFD_STATE.docFiltro='todos';EFD_STATE.docBusca='';EFD_STATE.docPagina=1;
+  EFD_STATE.alertas=[];
+  document.getElementById('efd-upload-area').style.display='block';
+  document.getElementById('efd-tabs-area').style.display='none';
+  document.getElementById('efd-files-status').style.display='none';
+  document.getElementById('efd-dimp-card').innerHTML='';
+  const btn=document.getElementById('efd-process-btn');
+  btn.disabled=true;btn.textContent='▶ Processar EFD';
+  document.getElementById('efd-file-input').value='';
+  document.getElementById('dimp-file-input').value='';
+}
+
+function efdTab(tab,el){
+  EFD_STATE.tabAtual=tab;
+  EFD_STATE.docPagina=1;EFD_STATE.docBusca='';EFD_STATE.docFiltro='todos';
+  document.querySelectorAll('#efd-tabs .mon-mod-btn').forEach(b=>b.classList.remove('active'));
+  if(el)el.classList.add('active');
+  efdRenderTab();
+}
+
+function efdSetComp(comp){EFD_STATE.compFiltro=comp;EFD_STATE.docPagina=1;efdRenderTab();}
+
+function efdVerDocsParticipante(codPart){
+  EFD_STATE.tabAtual='documentos';
+  EFD_STATE.docFiltro='todos';
+  EFD_STATE.docPagina=1;
+  const part=EFD_STATE.consolidated?.allParticipantes.get(codPart);
+  EFD_STATE.docBusca=part?.nome||codPart;
+  efdRenderTabs();efdRenderTab();
+}
+
+function efdRenderDimpCard(){
+  const el=document.getElementById('efd-dimp-card');
+  if(!el)return;
+  const e=EFD_STATE.empresa;
+  if(!e){el.innerHTML='';return;}
+  const perStr=e.periodos.map(p=>{const s=String(p);return s.slice(4,6)+'/'+s.slice(0,4);}).join(', ');
+  
+  if(EFD_STATE.dimpData){
+    // DIMP já carregada
+    const dimp=EFD_STATE.dimpData;
+    const totEnt=dimp.registros.reduce((s,r)=>classificaDimp(r)==='entrada'?s+r.valor:s,0);
+    const f=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    el.innerHTML='<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;margin-bottom:12px;cursor:pointer" onclick="efdTab(\'dimp\')"><span style="font-size:20px">🏦</span><div style="flex:1"><div style="font-size:12px;font-weight:700;color:#166534">✓ DIMP carregada — '+dimp.registros.length+' registros · Entradas R$ '+f(totEnt)+'</div><div style="font-size:11px;color:#64748b;margin-top:1px">Clique para ver cruzamento DIMP × EFD</div></div><button onclick="event.stopPropagation();efdRemoverDimp()" style="padding:4px 10px;border:1px solid #86efac;border-radius:6px;background:#fff;font-size:10px;cursor:pointer;color:#64748b">✕ Remover</button></div>';
+  } else {
+    // Card para carregar DIMP
+    el.innerHTML='<div id="efd-dimp-card-inner" style="margin-bottom:12px"><div onclick="efdToggleDimpUpload()" style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--surface);border:1.5px dashed var(--border-strong);border-radius:10px;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor=\'var(--primary)\';this.style.background=\'var(--primary-soft)\'" onmouseout="this.style.borderColor=\'var(--border-strong)\';this.style.background=\'var(--surface)\'"><span style="font-size:20px">🏦</span><div><div style="font-size:12px;font-weight:700;color:var(--text)">Comparar com DIMP</div><div style="font-size:11px;color:var(--text-3);margin-top:1px">Cruzar faturamento EFD com movimentação bancária ('+perStr+')</div></div><span style="margin-left:auto;font-size:11px;color:var(--primary);font-weight:600">+ Carregar</span></div><div id="efd-dimp-upload-box" style="display:none;margin-top:8px;padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px"><div style="display:flex;align-items:center;gap:10px"><div class="drop-zone" style="flex:1;padding:12px;margin:0" onclick="document.getElementById(\'dimp-file-input\').click()" ondrop="efdOnDropDimp(event)" ondragover="event.preventDefault();this.classList.add(\'over\')" ondragleave="this.classList.remove(\'over\')"><div style="font-size:14px">📎</div><div class="drop-label" style="font-size:12px">DIMP (.xlsx) — arraste ou clique</div></div></div><div id="efd-dimp-status" style="margin-top:8px;display:none"></div></div></div>';
+  }
+}
+
+function efdToggleDimpUpload(){
+  const box=document.getElementById('efd-dimp-upload-box');
+  if(box)box.style.display=box.style.display==='none'?'block':'none';
+}
+
+async function efdOnDropDimp(ev){
+  ev.preventDefault();ev.currentTarget.classList.remove('over');
+  if(ev.dataTransfer.files.length) await efdOnDimpFile(ev.dataTransfer.files);
+}
+
+async function efdOnDimpFile(files){
+  if(!files.length)return;
+  const file=files[0];
+  const statusEl=document.getElementById('efd-dimp-status');
+  if(statusEl){statusEl.style.display='block';statusEl.innerHTML='<div style="font-size:12px;color:var(--primary);font-weight:600">⏳ Processando '+file.name+'...</div>';}
+  try{
+    const dimpParsed=await parseDIMP(file);
+    EFD_STATE.dimpFile=file;
+    EFD_STATE.dimpData=consolidateDimp([dimpParsed]);
+    efdGerarAlertas();
+    efdRenderDimpCard();
+    efdRenderTabs();
+    efdRenderTab();
+  }catch(err){
+    if(statusEl) statusEl.innerHTML='<div style="font-size:12px;color:#b91c1c;font-weight:600">❌ Erro: '+err.message+'</div>';
+  }
+}
+
+function efdRemoverDimp(){
+  EFD_STATE.dimpFile=null;
+  EFD_STATE.dimpData=null;
+  if(EFD_STATE.tabAtual==='dimp')EFD_STATE.tabAtual='resumo';
+  efdGerarAlertas();
+  efdRenderDimpCard();
+  efdRenderTabs();
+  efdRenderTab();
+}
+function efdVerDocsParticipante(codPart){
+  EFD_STATE.tabAtual='documentos';EFD_STATE.docFiltro='todos';EFD_STATE.docBusca=codPart;EFD_STATE.docPagina=1;
+  document.querySelectorAll('#efd-tabs .mon-mod-btn').forEach(b=>b.classList.remove('active'));
+  efdRenderTab();
+}
+
+function efdRenderTabs(){
+  const el=document.getElementById('efd-tabs');
+  if(!el)return;
+  const con=EFD_STATE.consolidated;
+  const comps=EFD_STATE.compFiltro==='todos'?Object.keys(con?.porComp||{}):Object.keys(con?.porComp||{}).filter(k=>k===EFD_STATE.compFiltro);
+  let nDocs=0,nPart=0,nInv=0;
+  comps.forEach(k=>{
+    const p=con.porComp[k];
+    nDocs+=(p.saidasC100?.length||0)+(p.entradasC100?.length||0);
+    Object.keys(p.destMap||{}).forEach(d=>{if(!nPart[d])nPart++;});
+  });
+  nDocs=comps.reduce((s,k)=>{const p=con.porComp[k];return s+(p.saidasC100?.length||0)+(p.entradasC100?.length||0);},0);
+  nPart=con?con.allParticipantes.size:0;
+  nInv=con?con.h010All.filter(h=>EFD_STATE.compFiltro==='todos'||String(h.competencia)===EFD_STATE.compFiltro).length:0;
+  const tabs=[
+    {id:'resumo',icon:'📋',label:'Resumo'},
+    {id:'documentos',icon:'📄',label:'Documentos',count:nDocs},
+    {id:'apuracao',icon:'🧮',label:'Apuração ICMS'},
+    {id:'apuracaost',icon:'🏷️',label:'Apuração ST'},
+    {id:'estoque',icon:'📦',label:'Entradas × Saídas'},
+    {id:'participantes',icon:'👥',label:'Participantes',count:nPart},
+    {id:'padroes',icon:'🔍',label:'Padrões'},
+  ];
+  if(EFD_STATE.dimpData) tabs.push({id:'dimp',icon:'🏦',label:'DIMP × EFD'});
+  // Tab status from alertas
+  const tabStatus={};
+  EFD_STATE.alertas.forEach(a=>{
+    if(!tabStatus[a.tab]||a.nivel==='alto')tabStatus[a.tab]=a.nivel;
+    else if(a.nivel==='medio'&&tabStatus[a.tab]!=='alto')tabStatus[a.tab]='medio';
+  });
+  el.innerHTML=tabs.map(t=>{
+    const active=EFD_STATE.tabAtual===t.id?' active':'';
+    const cnt=t.count?' <span style="font-size:10px;opacity:.7">('+t.count+')</span>':'';
+    const st=tabStatus[t.id];
+    const dot=st==='alto'?' <span style="color:#b91c1c;font-size:8px">●</span>':st==='medio'?' <span style="color:#f59e0b;font-size:8px">●</span>':'';
+    return '<button class="mon-mod-btn'+active+'" onclick="efdTab(\''+t.id+'\',this)">'+t.icon+' '+t.label+cnt+dot+'</button>';
+  }).join('');
+}
+
+function efdRenderCompFilter(){
+  const el=document.getElementById('efd-comp-filter');
+  const con=EFD_STATE.consolidated;
+  if(!con||!el)return;
+  const comps=Object.keys(con.porComp).sort();
+  if(comps.length<=1){el.style.display='none';return;}
+  el.style.display='block';
+  const sel=EFD_STATE.compFiltro;
+  const selIdx=sel==='todos'?-1:comps.indexOf(sel);
+  const selLbl=sel==='todos'?'Todas ('+comps.length+')':String(sel).slice(4,6)+'/'+String(sel).slice(0,4);
+  const prevComp=selIdx>0?comps[selIdx-1]:(sel==='todos'?null:null);
+  const nextComp=selIdx>=0&&selIdx<comps.length-1?comps[selIdx+1]:null;
+  let h='<div style="display:flex;gap:8px;align-items:center">';
+  h+='<span style="font-size:11px;font-weight:700;color:var(--text-3)">Competência:</span>';
+  // Arrows
+  h+='<div style="display:flex;align-items:center;gap:2px">';
+  h+='<button onclick="efdSetComp(\'todos\')" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px 0 0 6px;background:'+(sel==='todos'?'var(--primary)':'#fff')+';color:'+(sel==='todos'?'#fff':'var(--text-2)')+';font-size:11px;font-weight:600;cursor:pointer;border-right:none">Todas</button>';
+  h+='<button onclick="'+(prevComp?'efdSetComp(\''+prevComp+'\')':sel!=='todos'?'efdSetComp(\'todos\')':'')+'" style="padding:4px 8px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:12px;color:var(--text-2)" '+(sel==='todos'?'disabled':'')+'">◀</button>';
+  if(comps.length<=6){
+    comps.forEach(k=>{
+      const lbl=String(k).slice(4,6)+'/'+String(k).slice(0,4);
+      h+='<button onclick="efdSetComp(\''+k+'\')" style="padding:4px 10px;border:1px solid var(--border);border-left:none;background:'+(sel===k?'var(--primary)':'#fff')+';color:'+(sel===k?'#fff':'var(--text-2)')+';font-size:11px;font-weight:600;cursor:pointer">'+lbl+'</button>';
+    });
+  } else {
+    h+='<select onchange="efdSetComp(this.value)" style="padding:4px 8px;border:1px solid var(--border);font-size:12px;font-weight:600;font-family:inherit;background:#fff;cursor:pointer;color:var(--text)">';
+    comps.forEach(k=>{
+      const lbl=String(k).slice(4,6)+'/'+String(k).slice(0,4);
+      h+='<option value="'+k+'"'+(sel===k?' selected':'')+'>'+lbl+'</option>';
+    });
+    h+='</select>';
+  }
+  h+='<button onclick="'+(nextComp?'efdSetComp(\''+nextComp+'\')':'')+'" style="padding:4px 8px;border:1px solid var(--border);border-left:none;border-radius:0 6px 6px 0;background:#fff;cursor:pointer;font-size:12px;color:var(--text-2)" '+(sel==='todos'||!nextComp?'disabled':'')+'">▶</button>';
+  h+='</div>';
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+function efdRenderTab(){
+  const c=document.getElementById('efd-tab-content');
+  const tab=EFD_STATE.tabAtual;
+  const con=EFD_STATE.consolidated;
+  const f=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  
+  efdRenderCompFilter();
+  efdRenderTabs();
+  
+  if(!con){c.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-3)">Nenhum dado processado</div>';return;}
+  
+  // Filtrar competências
+  const allComps=Object.keys(con.porComp).sort();
+  const comps=EFD_STATE.compFiltro==='todos'?allComps:allComps.filter(k=>k===EFD_STATE.compFiltro);
+  const isTodos=EFD_STATE.compFiltro==='todos';
+  
+  if(tab==='resumo'){
+    const e=EFD_STATE.empresa;
+    const periodoLabel=isTodos?'Todas as competências ('+comps.length+')':String(EFD_STATE.compFiltro).slice(4,6)+'/'+String(EFD_STATE.compFiltro).slice(0,4);
+    const totFat=comps.reduce((s,k)=>s+con.porComp[k].vl_venda,0);
+    const totCompra=comps.reduce((s,k)=>s+con.porComp[k].vl_compra,0);
+    const totDevol=comps.reduce((s,k)=>s+con.porComp[k].vl_devol_venda,0);
+    const totICMS=comps.reduce((s,k)=>s+(con.porComp[k].e110?con.porComp[k].e110.vl_icms_recolher:0),0);
+    const totICMSST=comps.reduce((s,k)=>s+(con.porComp[k].e210?con.porComp[k].e210.vl_icms_recol_st:0),0);
+    const totDocs=comps.reduce((s,k)=>s+con.porComp[k].qtdSaidas,0);
+    const totDocsEnt=comps.reduce((s,k)=>s+con.porComp[k].qtdEntradas,0);
+    const perfil=e.ind_perfil==='A'?'Perfil A (completo)':e.ind_perfil==='B'?'Perfil B (intermediário)':'Perfil C (simplificado)';
+    const ativ=e.ind_ativ==='0'?'Industrial/Equiparado':'Outros';
+    
+    let h='';
+    
+    // Painel de alertas
+    if(EFD_STATE.alertas.length&&isTodos){
+      const corNivel={alto:'#fef2f2;border:1.5px solid #fca5a5',medio:'#fffbeb;border:1.5px solid #fcd34d',baixo:'#f0f9ff;border:1.5px solid #93c5fd'};
+      const icoNivel={alto:'🔴',medio:'🟡',baixo:'🔵'};
+      h+='<div style="margin-bottom:16px;padding:12px 16px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px">';
+      h+='<div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:8px">⚠ '+EFD_STATE.alertas.length+' alerta(s) detectado(s)</div>';
+      h+='<div style="display:flex;flex-direction:column;gap:4px">';
+      EFD_STATE.alertas.forEach(a=>{
+        h+='<div onclick="efdTab(\''+a.tab+'\')" style="cursor:pointer;padding:5px 10px;border-radius:6px;font-size:11px;background:'+corNivel[a.nivel]+';display:flex;align-items:center;gap:6px">'+icoNivel[a.nivel]+' <span>'+a.msg+'</span><span style="margin-left:auto;font-size:10px;color:#94a3b8">→ '+a.tab+'</span></div>';
+      });
+      h+='</div></div>';
+    }
+    
+    // Mini-gráfico de faturamento (se múltiplas competências e visão "Todas")
+    if(allComps.length>1&&isTodos){
+      const fatMensal=allComps.map(k=>con.porComp[k].vl_venda);
+      const maxFat=Math.max(...fatMensal,1);
+      h+='<div style="margin-bottom:16px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 16px">';
+      h+='<div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Faturamento mensal</div>';
+      h+='<div style="display:flex;gap:3px;align-items:flex-end;height:60px">';
+      allComps.forEach((k,i)=>{
+        const v=con.porComp[k].vl_venda;
+        const hPx=Math.max((v/maxFat)*55,2);
+        const lbl=String(k).slice(4,6)+'/'+String(k).slice(2,4);
+        const avg=fatMensal.reduce((s,x)=>s+x,0)/fatMensal.length;
+        const cor=v<avg*0.5?'#b91c1c':v>avg*1.5?'#166534':'var(--primary)';
+        h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px" title="'+lbl+': R$ '+f(v)+'">';
+        h+='<div style="width:100%;height:'+hPx+'px;background:'+cor+';border-radius:3px 3px 0 0;opacity:.8"></div>';
+        h+='<span style="font-size:7px;color:#94a3b8">'+(i%3===0||allComps.length<=12?lbl:'')+'</span></div>';
+      });
+      h+='</div></div>';
+    }
+    
+    h+='<div class="cards-grid">';
+    // Card 1: Empresa
+    h+='<div class="card"><div class="card-head"><div class="card-icon blue">🏢</div>Cadastro</div>';
+    h+='<div class="card-row"><span class="label">Razão Social</span><span class="value" style="font-size:12px">'+e.nome+'</span></div>';
+    h+='<div class="card-row"><span class="label">CNPJ</span><span class="value mono">'+e.cnpj+'</span></div>';
+    h+='<div class="card-row"><span class="label">IE</span><span class="value mono">'+(e.ie||'—')+'</span></div>';
+    h+='<div class="card-row"><span class="label">UF / Município</span><span class="value">'+e.uf+' / '+(e.cod_mun||'—')+'</span></div>';
+    h+='<div class="card-row"><span class="label">Declaração</span><span class="value">'+perfil+'</span></div>';
+    h+='<div class="card-row"><span class="label">Atividade</span><span class="value">'+ativ+'</span></div>';
+    h+='<div class="card-row"><span class="label">Competências</span><span class="value big">'+comps.length+'</span></div>';
+    h+='</div>';
+    
+    // Card 2: Volumes
+    h+='<div class="card"><div class="card-head"><div class="card-icon amber">📊</div>Volumes'+(isTodos?'':' — '+periodoLabel)+'</div>';
+    h+='<div class="card-row"><span class="label">Fat. bruto (vendas)</span><span class="value">R$ '+f(totFat)+'</span></div>';
+    h+='<div class="card-row"><span class="label">Devoluções de venda</span><span class="value">R$ '+f(totDevol)+'</span></div>';
+    h+='<div class="card-row"><span class="label">Fat. líquido</span><span class="value big">R$ '+f(totFat-totDevol)+'</span></div>';
+    h+='<div class="card-row"><span class="label">Compras</span><span class="value">R$ '+f(totCompra)+'</span></div>';
+    h+='<div class="card-row"><span class="label">Docs emitidos (saídas)</span><span class="value">'+totDocs+'</span></div>';
+    h+='<div class="card-row"><span class="label">Docs recebidos (entradas)</span><span class="value">'+totDocsEnt+'</span></div>';
+    h+='</div>';
+    
+    // Card 3: Tributos
+    h+='<div class="card"><div class="card-head"><div class="card-icon purple">🧮</div>Tributos'+(isTodos?'':' — '+periodoLabel)+'</div>';
+    h+='<div class="card-row"><span class="label">ICMS próprio a recolher</span><span class="value">R$ '+f(totICMS)+'</span></div>';
+    h+='<div class="card-row"><span class="label">ICMS-ST a recolher</span><span class="value">R$ '+f(totICMSST)+'</span></div>';
+    h+='<div class="card-row"><span class="label">Total ICMS</span><span class="value big">R$ '+f(totICMS+totICMSST)+'</span></div>';
+    h+='<div class="card-row"><span class="label">Participantes cadastrados</span><span class="value">'+con.allParticipantes.size+'</span></div>';
+    h+='<div class="card-row"><span class="label">Itens cadastrados</span><span class="value">'+con.allItensCad.size+'</span></div>';
+    h+='<div class="card-row"><span class="label">Registros inventário</span><span class="value">'+(con.h010All.length||'—')+'</span></div>';
+    h+='</div></div>';
+    
+    // Tabela mensal (sempre mostra todas, highlight na selecionada, clicável)
+    if(allComps.length>1){
+    h+='<div style="margin-top:20px"><div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:8px 14px;background:var(--surface-2);border-radius:8px;font-size:12px;font-weight:700;color:var(--text-2);display:flex;align-items:center;gap:6px"><span>▼</span> Detalhamento mensal (clique na linha para filtrar)</div>';
+    h+='<div><table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:0 0 8px 8px;overflow:hidden;margin-top:1px">';
+    h+='<thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Competência</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Vendas</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Compras</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">ICMS Próprio</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">ICMS-ST</th><th style="padding:8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Saídas</th><th style="padding:8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Entradas</th></tr></thead><tbody>';
+    allComps.forEach((k,i)=>{
+      const p=con.porComp[k];
+      const compFmt=String(k).slice(4,6)+'/'+String(k).slice(0,4);
+      const icmsR=p.e110?p.e110.vl_icms_recolher:0;
+      const icmsSTR=p.e210?p.e210.vl_icms_recol_st:0;
+      const isSel=EFD_STATE.compFiltro===k;
+      const bg=isSel?'background:#dbeafe;':'(i%2?"background:#fafbfc;":"")';
+      h+='<tr onclick="efdSetComp('+(isSel?'\'todos\'':'\''+k+'\'')+')\" style="cursor:pointer;border-top:1px solid #f1f5f9;'+(isSel?'background:#dbeafe;font-weight:700':(i%2?'background:#fafbfc':''))+'"><td style="padding:6px 8px;font-weight:600">'+(isSel?'▸ ':'')+compFmt+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(p.vl_venda)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(p.vl_compra)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(icmsR)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(icmsSTR)+'</td><td style="padding:6px 8px;text-align:center">'+p.qtdSaidas+'</td><td style="padding:6px 8px;text-align:center">'+p.qtdEntradas+'</td></tr>';
+    });
+    h+='</tbody></table></div></div>';
+    }
+    
+    // CFOP breakdown
+    const cfopTotals={};
+    comps.forEach(k=>{
+      const agg=con.porComp[k].cfopAgg||{};
+      Object.entries(agg).forEach(([cfop,v])=>{
+        if(!cfopTotals[cfop])cfopTotals[cfop]={vl_opr:0,vl_icms:0,vl_icms_st:0,qtd:0};
+        cfopTotals[cfop].vl_opr+=v.vl_opr;cfopTotals[cfop].vl_icms+=v.vl_icms;
+        cfopTotals[cfop].vl_icms_st+=v.vl_icms_st;cfopTotals[cfop].qtd+=v.qtd;
+      });
+    });
+    const cfopSorted=Object.entries(cfopTotals).sort((a,b)=>b[1].vl_opr-a[1].vl_opr);
+    if(cfopSorted.length){
+      const cfopSaidas=cfopSorted.filter(([c])=>/^[567]/.test(c));
+      const cfopEntradas=cfopSorted.filter(([c])=>/^[123]/.test(c));
+      h+='<div style="margin-top:20px"><div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:8px 14px;background:var(--surface-2);border-radius:8px;font-size:12px;font-weight:700;color:var(--text-2);display:flex;align-items:center;gap:6px"><span>▶</span> Composição por CFOP ('+cfopSorted.length+' códigos)</div>';
+      h+='<div style="display:none"><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px">';
+      // Saídas
+      h+='<div><div style="font-size:11px;font-weight:700;color:#b91c1c;text-transform:uppercase;margin-bottom:6px">Saídas ('+cfopSaidas.length+')</div>';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:6px;overflow:hidden"><thead><tr style="background:#fef2f2"><th style="padding:4px 6px;text-align:left;font-size:9px;font-weight:700;color:#991b1b">CFOP</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#991b1b">Vl. Operação</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#991b1b">ICMS</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#991b1b">ST</th></tr></thead><tbody>';
+      cfopSaidas.forEach(([cfop,v],i)=>{h+='<tr style="border-top:1px solid #fef2f2;'+(i%2?'background:#fffbfb':'')+'"><td style="padding:3px 6px;font-weight:600">'+cfopHtml(cfop)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">R$ '+f(v.vl_opr)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">R$ '+f(v.vl_icms)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">R$ '+f(v.vl_icms_st)+'</td></tr>';});
+      h+='</tbody></table></div>';
+      // Entradas
+      h+='<div><div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:6px">Entradas ('+cfopEntradas.length+')</div>';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:6px;overflow:hidden"><thead><tr style="background:#f0fdf4"><th style="padding:4px 6px;text-align:left;font-size:9px;font-weight:700;color:#166534">CFOP</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#166534">Vl. Operação</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#166534">ICMS</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#166534">ST</th></tr></thead><tbody>';
+      cfopEntradas.forEach(([cfop,v],i)=>{h+='<tr style="border-top:1px solid #f0fdf4;'+(i%2?'background:#fafff5':'')+'"><td style="padding:3px 6px;font-weight:600">'+cfopHtml(cfop)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">R$ '+f(v.vl_opr)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">R$ '+f(v.vl_icms)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">R$ '+f(v.vl_icms_st)+'</td></tr>';});
+      h+='</tbody></table></div>';
+      h+='</div></div></div>';
+    }
+    
+    // DIMP resumo (se disponível)
+    if(EFD_STATE.dimpData){
+      const dimp=EFD_STATE.dimpData;
+      const dimpRegs=isTodos?dimp.registros:dimp.registros.filter(r=>String(r.periodo)===EFD_STATE.compFiltro);
+      const totDimpEnt=dimpRegs.reduce((s,r)=>classificaDimp(r)==='entrada'?s+r.valor:s,0);
+      const totDimpSai=dimpRegs.reduce((s,r)=>classificaDimp(r)==='saida'?s+r.valor:s,0);
+      const razao=totFat>0?(totDimpEnt/totFat):0;
+      h+='<div style="margin-top:20px;padding:16px;background:'+(razao>2?'#fef2f2':'#f0fdf4')+';border:1.5px solid '+(razao>2?'#fca5a5':'#86efac')+';border-radius:10px">';
+      h+='<div style="font-size:13px;font-weight:700;color:'+(razao>2?'#991b1b':'#166534')+';margin-bottom:8px">🏦 Cruzamento DIMP × EFD</div>';
+      h+='<div style="display:flex;gap:24px;font-size:13px">';
+      h+='<span>DIMP Entradas: <b>R$ '+f(totDimpEnt)+'</b></span>';
+      h+='<span>EFD Vendas: <b>R$ '+f(totFat)+'</b></span>';
+      h+='<span>Razão: <b style="font-size:16px;color:'+(razao>2?'#b91c1c':'#166534')+'">'+razao.toFixed(2)+'×</b></span>';
+      h+='</div></div>';
+    }
+    
+    c.innerHTML=h;
+    return;
+  }
+  
+  if(tab==='apuracao'){
+    // Apuração ICMS (E110)
+    let h='';
+    if(!isTodos&&comps.length===1){
+      const p=con.porComp[comps[0]];
+      const e1=p.e110;
+      if(!e1){c.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-3)">Registro E110 não encontrado nesta competência</div>';return;}
+      const compLbl=String(comps[0]).slice(4,6)+'/'+String(comps[0]).slice(0,4);
+      h+='<div style="font-size:14px;font-weight:700;margin-bottom:16px">Apuração ICMS Próprio — '+compLbl+'</div>';
+      const items=[
+        {lbl:'(+) Débitos de saídas',val:e1.vl_tot_debitos,cor:'#b91c1c'},
+        {lbl:'(+) Ajustes a débito',val:e1.vl_aj_debitos,cor:'#b91c1c'},
+        {lbl:'(+) Total ajustes a débito',val:e1.vl_totaj_debitos,cor:'#b91c1c'},
+        {lbl:'(-) Créditos de entradas',val:e1.vl_tot_creditos,cor:'#166534'},
+        {lbl:'(-) Ajustes a crédito',val:e1.vl_aj_creditos,cor:'#166534'},
+        {lbl:'(-) Total ajustes a crédito',val:e1.vl_totaj_creditos,cor:'#166534'},
+        {lbl:'(+) Estornos de crédito',val:e1.vl_estornos_cred,cor:'#92400e'},
+        {lbl:'(-) Estornos de débito',val:e1.vl_estornos_deb,cor:'#0369a1'},
+        {lbl:'Saldo credor anterior',val:e1.vl_sld_credor_ant,cor:'#475569'},
+        {s:true},
+        {lbl:'Saldo apurado',val:e1.vl_sld_apurado,cor:'#1e293b',bold:true},
+        {lbl:'(-) Deduções',val:e1.vl_tot_ded,cor:'#166534'},
+        {s:true},
+        {lbl:'ICMS a recolher',val:e1.vl_icms_recolher,cor:'#b91c1c',big:true},
+        {lbl:'Saldo credor a transportar',val:e1.vl_sld_credor_transportar,cor:'#166534'},
+      ];
+      h+='<div style="max-width:600px">';
+      items.forEach(it=>{
+        if(it.s){h+='<div style="border-top:2px solid var(--border);margin:8px 0"></div>';return;}
+        h+='<div style="display:flex;justify-content:space-between;padding:'+(it.big?'12px 14px':'8px 14px')+';background:'+(it.big?'#fef2f2':'transparent')+';border-radius:6px;margin:2px 0"><span style="font-size:'+(it.big?'14px':'13px')+';font-weight:'+(it.bold||it.big?'700':'400')+';color:'+it.cor+'">'+it.lbl+'</span><span style="font-family:monospace;font-size:'+(it.big?'16px':'13px')+';font-weight:'+(it.bold||it.big?'700':'500')+';color:'+it.cor+'">R$ '+f(it.val)+'</span></div>';
+      });
+      h+='</div>';
+      // E116 - Obrigações
+      if(p.e116&&p.e116.length){
+        h+='<div style="margin-top:20px;font-size:13px;font-weight:700;margin-bottom:8px">Obrigações de ICMS a recolher (E116)</div>';
+        h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Cód. Receita</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th><th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Vencimento</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Complemento</th></tr></thead><tbody>';
+        p.e116.forEach((ob,i)=>{h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:6px 8px;font-family:monospace">'+ob.cod_rec+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(ob.vl_or)+'</td><td style="padding:6px 8px;text-align:center">'+ob.dt_vcto+'</td><td style="padding:6px 8px;font-size:11px;color:#64748b">'+(ob.txt_compl||'—')+'</td></tr>';});
+        h+='</tbody></table>';
+      }
+      // E111 - Ajustes
+      if(p.e111&&p.e111.length){
+        h+='<div style="margin-top:20px;font-size:13px;font-weight:700;margin-bottom:8px">Ajustes da apuração (E111) — '+p.e111.length+' registro(s)</div>';
+        h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Código</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Descrição</th></tr></thead><tbody>';
+        p.e111.forEach((aj,i)=>{h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:6px 8px;font-family:monospace;font-size:11px">'+aj.cod_aj_apur+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(aj.vl_aj_apur)+'</td><td style="padding:6px 8px;font-size:11px;color:#64748b;max-width:400px;overflow:hidden;text-overflow:ellipsis">'+(aj.descr||'—')+'</td></tr>';});
+        h+='</tbody></table>';
+      }
+    } else {
+      // Visão consolidada: tabela com E110 de cada competência
+      h+='<div style="font-size:14px;font-weight:700;margin-bottom:16px">Apuração ICMS Próprio — Visão consolidada</div>';
+      h+='<div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Selecione uma competência nos filtros acima para ver o detalhamento completo (waterfall, E111, E116).</div>';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Comp.</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Débitos</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Créditos</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Saldo Apurado</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Deduções</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#b91c1c">A Recolher</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#166534">Saldo Credor</th></tr></thead><tbody>';
+      comps.forEach((k,i)=>{
+        const p=con.porComp[k];const e1=p.e110;if(!e1)return;
+        const compFmt=String(k).slice(4,6)+'/'+String(k).slice(0,4);
+        h+='<tr onclick="efdSetComp(\''+k+'\')" style="cursor:pointer;border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'" onmouseover="this.style.background=\'#dbeafe\'" onmouseout="this.style.background=\''+(i%2?'#fafbfc':'')+'\'"><td style="padding:6px 8px;font-weight:600">'+compFmt+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(e1.vl_tot_debitos)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(e1.vl_tot_creditos)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(e1.vl_sld_apurado)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(e1.vl_tot_ded)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:700;color:#b91c1c">R$ '+f(e1.vl_icms_recolher)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;color:#166534">R$ '+f(e1.vl_sld_credor_transportar)+'</td></tr>';
+      });
+      h+='</tbody></table>';
+    }
+    // CST × CFOP Conformidade
+    const cstCfop={};
+    comps.forEach(k=>{
+      const efd=EFD_STATE.efdData.find(e=>e.competencia===parseInt(k));
+      if(!efd)return;
+      efd.c190.forEach(r=>{
+        const key=r.cst_icms+'|'+r.cfop;
+        if(!cstCfop[key])cstCfop[key]={cst:r.cst_icms,cfop:r.cfop,vl_opr:0,vl_icms:0,vl_st:0,qtd:0};
+        cstCfop[key].vl_opr+=r.vl_opr;cstCfop[key].vl_icms+=r.vl_icms;cstCfop[key].vl_st+=r.vl_icms_st;cstCfop[key].qtd++;
+      });
+    });
+    const cstEntries=Object.values(cstCfop).sort((a,b)=>b.vl_opr-a.vl_opr);
+    if(cstEntries.length){
+      // Detectar combinações suspeitas
+      const suspeitas=cstEntries.filter(e=>{
+        if(e.cst.startsWith('0')&&e.cfop.match(/^[56]40[35]$/))return true; // tributado + ST retido
+        if(e.cst.startsWith('4')&&EFD_CFOP_VENDA.has(e.cfop)&&!e.cfop.match(/540/))return true; // isento + venda tributada
+        return false;
+      });
+      h+='<div style="margin-top:20px"><div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:8px 14px;background:var(--surface-2);border-radius:8px;font-size:12px;font-weight:700;color:var(--text-2);display:flex;align-items:center;gap:6px"><span>▶</span> CST × CFOP — Conformidade ('+cstEntries.length+' combinações'+(suspeitas.length?' · '+suspeitas.length+' suspeita(s)':' · ✓')+')</div>';
+      h+='<div style="display:none">';
+      if(suspeitas.length){
+        h+='<div style="padding:8px 12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;margin:8px 0;font-size:11px;color:#991b1b"><b>⚠ Combinações suspeitas:</b> CST tributado com CFOP ST retido, ou CST isento com CFOP de venda tributada.</div>';
+      }
+      h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:0 0 8px 8px;overflow:hidden;margin-top:4px"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">CST</th><th style="padding:4px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">CFOP</th><th style="padding:4px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">Vl. Operação</th><th style="padding:4px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">ICMS</th><th style="padding:4px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">ICMS-ST</th><th style="padding:4px 8px;text-align:center;font-size:9px;font-weight:700;color:#475569">Regs</th></tr></thead><tbody>';
+      cstEntries.forEach((e,i)=>{
+        const isSusp=suspeitas.includes(e);
+        h+='<tr style="border-top:1px solid #f1f5f9;'+(isSusp?'background:#fef2f2;':i%2?'background:#fafbfc':'')+'"><td style="padding:3px 8px;font-family:monospace;font-weight:600;'+(isSusp?'color:#b91c1c':'')+'">'+e.cst+'</td><td style="padding:3px 8px">'+cfopHtml(e.cfop)+'</td><td style="padding:3px 8px;text-align:right;font-family:monospace">R$ '+f(e.vl_opr)+'</td><td style="padding:3px 8px;text-align:right;font-family:monospace">R$ '+f(e.vl_icms)+'</td><td style="padding:3px 8px;text-align:right;font-family:monospace">R$ '+f(e.vl_st)+'</td><td style="padding:3px 8px;text-align:center">'+e.qtd+'</td></tr>';
+      });
+      h+='</tbody></table></div></div>';
+    }
+    c.innerHTML=h;return;
+  }
+  
+  if(tab==='apuracaost'){
+    let h='';
+    if(!isTodos&&comps.length===1){
+      const p=con.porComp[comps[0]];
+      const e2=p.e210;
+      if(!e2){c.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-3)">Registro E210 não encontrado nesta competência'+(e2===null?' (sem movimentação ST)':'')+'</div>';return;}
+      const compLbl=String(comps[0]).slice(4,6)+'/'+String(comps[0]).slice(0,4);
+      h+='<div style="font-size:14px;font-weight:700;margin-bottom:16px">Apuração ICMS-ST — '+compLbl+'</div>';
+      const items=[
+        {lbl:'Saldo credor anterior ST',val:e2.vl_sld_cred_ant_st,cor:'#166534'},
+        {lbl:'(+) Devoluções ST',val:e2.vl_devol_st,cor:'#166534'},
+        {lbl:'(+) Ressarcimentos ST',val:e2.vl_ressarc_st,cor:'#166534'},
+        {lbl:'(+) Outros créditos ST',val:e2.vl_out_cred_st,cor:'#166534'},
+        {lbl:'(+) Ajustes a crédito ST',val:e2.vl_aj_creditos_st,cor:'#166534'},
+        {lbl:'(-) Retenções ST',val:e2.vl_retencao_st,cor:'#b91c1c'},
+        {lbl:'(-) Outros débitos ST',val:e2.vl_out_deb_st,cor:'#b91c1c'},
+        {lbl:'(-) Ajustes a débito ST',val:e2.vl_aj_debitos_st,cor:'#b91c1c'},
+        {s:true},
+        {lbl:'Saldo devedor anterior ST',val:e2.vl_sld_dev_ant_st,cor:'#1e293b',bold:true},
+        {lbl:'(-) Deduções ST',val:e2.vl_ded_st,cor:'#166534'},
+        {s:true},
+        {lbl:'ICMS-ST a recolher',val:e2.vl_icms_recol_st,cor:'#b91c1c',big:true},
+        {lbl:'Saldo credor ST a transportar',val:e2.vl_sld_cred_st_transportar,cor:'#166534'},
+        {lbl:'Débitos especiais ST',val:e2.deb_esp_st,cor:'#92400e'},
+      ];
+      h+='<div style="max-width:600px">';
+      items.forEach(it=>{
+        if(it.s){h+='<div style="border-top:2px solid var(--border);margin:8px 0"></div>';return;}
+        if(!it.val&&!it.big)return;
+        h+='<div style="display:flex;justify-content:space-between;padding:'+(it.big?'12px 14px':'8px 14px')+';background:'+(it.big?'#fef2f2':'transparent')+';border-radius:6px;margin:2px 0"><span style="font-size:'+(it.big?'14px':'13px')+';font-weight:'+(it.bold||it.big?'700':'400')+';color:'+it.cor+'">'+it.lbl+'</span><span style="font-family:monospace;font-size:'+(it.big?'16px':'13px')+';font-weight:'+(it.bold||it.big?'700':'500')+';color:'+it.cor+'">R$ '+f(it.val)+'</span></div>';
+      });
+      h+='</div>';
+      // E250 - Obrigações ST
+      if(p.e250&&p.e250.length){
+        h+='<div style="margin-top:20px;font-size:13px;font-weight:700;margin-bottom:8px">Obrigações ICMS-ST a recolher (E250)</div>';
+        h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Cód. Receita</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th><th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Vencimento</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Complemento</th></tr></thead><tbody>';
+        p.e250.forEach((ob,i)=>{h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:6px 8px;font-family:monospace">'+ob.cod_rec+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(ob.vl_or)+'</td><td style="padding:6px 8px;text-align:center">'+ob.dt_vcto+'</td><td style="padding:6px 8px;font-size:11px;color:#64748b">'+(ob.txt_compl||'—')+'</td></tr>';});
+        h+='</tbody></table>';
+      }
+    } else {
+      h+='<div style="font-size:14px;font-weight:700;margin-bottom:16px">Apuração ICMS-ST — Visão consolidada</div>';
+      h+='<div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Selecione uma competência para ver o detalhamento completo (waterfall, E220, E250).</div>';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Comp.</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Retenções</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Devoluções</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Créditos ST</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#b91c1c">ST a Recolher</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#166534">Saldo Credor</th></tr></thead><tbody>';
+      comps.forEach((k,i)=>{
+        const p=con.porComp[k];const e2=p.e210;if(!e2)return;
+        const compFmt=String(k).slice(4,6)+'/'+String(k).slice(0,4);
+        h+='<tr onclick="efdSetComp(\''+k+'\')" style="cursor:pointer;border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'" onmouseover="this.style.background=\'#dbeafe\'" onmouseout="this.style.background=\''+(i%2?'#fafbfc':'')+'\'"><td style="padding:6px 8px;font-weight:600">'+compFmt+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(e2.vl_retencao_st)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(e2.vl_devol_st)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(e2.vl_out_cred_st)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;font-weight:700;color:#b91c1c">R$ '+f(e2.vl_icms_recol_st)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace;color:#166534">R$ '+f(e2.vl_sld_cred_st_transportar)+'</td></tr>';
+      });
+      h+='</tbody></table>';
+    }
+    c.innerHTML=h;return;
+  }
+  
+  if(tab==='participantes'){
+    // Clientes (destMap das saídas)
+    const destTotals={};
+    comps.forEach(k=>{
+      const dm=con.porComp[k].destMap||{};
+      Object.values(dm).forEach(d=>{
+        if(!destTotals[d.cod_part])destTotals[d.cod_part]={...d,qtd:0,valor:0};
+        destTotals[d.cod_part].qtd+=d.qtd;destTotals[d.cod_part].valor+=d.valor;
+      });
+    });
+    // Fornecedores (entradas)
+    const fornTotals={};
+    comps.forEach(k=>{
+      const ents=con.porComp[k].entradasC100||[];
+      ents.forEach(c=>{
+        const pr=con.allParticipantes.get(c.cod_part)||{};
+        const key=c.cod_part;
+        if(!fornTotals[key])fornTotals[key]={cod_part:key,nome:pr.nome||'?',cnpj:pr.cnpj||'',qtd:0,valor:0};
+        fornTotals[key].qtd++;fornTotals[key].valor+=c.vl_doc;
+      });
+    });
+    const topDest=Object.values(destTotals).sort((a,b)=>b.valor-a.valor);
+    const topForn=Object.values(fornTotals).sort((a,b)=>b.valor-a.valor);
+    const renderTable=(lista,label,color)=>{
+      let h='';
+      if(!lista.length) return '<div style="text-align:center;padding:20px;color:var(--text-3)">Nenhum '+label.toLowerCase()+' encontrado</div>';
+      const tot=lista.reduce((s,d)=>s+d.valor,0);
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">#</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Nome</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">CNPJ</th><th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Docs</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">%</th></tr></thead><tbody>';
+      lista.slice(0,50).forEach((d,i)=>{
+        const pct=tot>0?((d.valor/tot)*100):0;
+        h+='<tr onclick="efdVerDocsParticipante(\''+d.cod_part+'\')" style="cursor:pointer;border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'" title="Clique para ver documentos"><td style="padding:5px 8px;text-align:center;color:#94a3b8;font-size:10px">'+(i+1)+'</td><td style="padding:5px 8px;font-weight:500;max-width:220px;overflow:hidden;text-overflow:ellipsis;font-size:11px">'+(d.nome||'—')+'</td><td style="padding:5px 8px;font-family:monospace;font-size:10px">'+(d.cnpj||'—')+'</td><td style="padding:5px 8px;text-align:center;font-weight:600">'+d.qtd+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:600;font-size:11px">R$ '+f(d.valor)+'</td><td style="padding:5px 8px;text-align:right;font-size:10px;color:#64748b">'+pct.toFixed(1)+'%</td></tr>';
+      });
+      h+='</tbody></table>';
+      if(lista.length>50)h+='<div style="padding:6px;font-size:10px;color:#94a3b8;text-align:center">Top 50 de '+lista.length+'</div>';
+      return h;
+    };
+    let h='<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">';
+    h+='<div><div style="font-size:13px;font-weight:700;color:#b91c1c;margin-bottom:10px">📤 Clientes (saídas) — '+topDest.length+'</div>'+renderTable(topDest,'Clientes','#b91c1c')+'</div>';
+    h+='<div><div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:10px">📥 Fornecedores (entradas) — '+topForn.length+'</div>'+renderTable(topForn,'Fornecedores','#166534')+'</div>';
+    h+='</div>';
+    c.innerHTML=h;return;
+  }
+  
+  if(tab==='estoque'){
+    // Análise Entradas × Saídas via C190
+    let h='<div style="font-size:14px;font-weight:700;margin-bottom:16px">📦 Entradas × Saídas</div>';
+    // Agregar C190 por tipo de operação
+    let totCompra=0,totVenda=0,totDevolVenda=0,totDevolCompra=0,totTransf=0,totRemessa=0,totUsoConsumo=0,totImobilizado=0,totOutros=0;
+    comps.forEach(k=>{
+      const agg=con.porComp[k].cfopAgg||{};
+      Object.entries(agg).forEach(([cfop,v])=>{
+        if(EFD_CFOP_VENDA.has(cfop))totVenda+=v.vl_opr;
+        else if(EFD_CFOP_COMPRA.has(cfop))totCompra+=v.vl_opr;
+        else if(EFD_CFOP_DEVOL_VENDA.has(cfop))totDevolVenda+=v.vl_opr;
+        else if(new Set(["5201","5202","5410","5411","5553","6201","6202","6410","6411","6553"]).has(cfop))totDevolCompra+=v.vl_opr;
+        else if(EFD_CFOP_TRANSF_SAIDA.has(cfop))totTransf+=v.vl_opr;
+        else if(EFD_CFOP_REMESSA.has(cfop))totRemessa+=v.vl_opr;
+        else if(EFD_CFOP_USO_CONSUMO.has(cfop))totUsoConsumo+=v.vl_opr;
+        else if(EFD_CFOP_IMOBILIZADO.has(cfop))totImobilizado+=v.vl_opr;
+        else totOutros+=v.vl_opr;
+      });
+    });
+    const comprasLiq=totCompra-totDevolCompra;
+    const vendasLiq=totVenda-totDevolVenda;
+    const markup=comprasLiq>0?((vendasLiq/comprasLiq-1)*100):0;
+    
+    // Cards resumo
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px">';
+    const esCard=(lbl,val,cor,ico)=>'<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:3px">'+ico+' '+lbl+'</div><div style="font-size:16px;font-weight:800;color:'+cor+'">R$ '+f(val)+'</div></div>';
+    h+=esCard('Compras',totCompra,'#166534','📥');
+    h+=esCard('(-) Dev. Compra',totDevolCompra,'#64748b','↩️');
+    h+=esCard('Vendas',totVenda,'#b91c1c','📤');
+    h+=esCard('(-) Dev. Venda',totDevolVenda,'#64748b','↩️');
+    h+=esCard('Uso/Consumo',totUsoConsumo,'#7c3aed','🏷️');
+    h+=esCard('Imobilizado',totImobilizado,'#0369a1','🏗️');
+    h+='</div>';
+    
+    // Balanço
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">';
+    h+='<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px;text-align:center"><div style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px">Compras líquidas</div><div style="font-size:20px;font-weight:800;color:#166534">R$ '+f(comprasLiq)+'</div></div>';
+    h+='<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:14px;text-align:center"><div style="font-size:10px;font-weight:700;color:#b91c1c;text-transform:uppercase;margin-bottom:4px">Vendas líquidas</div><div style="font-size:20px;font-weight:800;color:#b91c1c">R$ '+f(vendasLiq)+'</div></div>';
+    h+='<div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:10px;padding:14px;text-align:center"><div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:4px">Markup</div><div style="font-size:20px;font-weight:800;color:var(--text)">'+markup.toFixed(1)+'%</div></div>';
+    h+='</div>';
+    
+    // Destaque uso/consumo e imobilizado
+    if(totUsoConsumo>0||totImobilizado>0){
+      h+='<div style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;padding:14px;margin-bottom:20px">';
+      h+='<div style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:8px">⚠ Atenção — Entradas sem direito a crédito pleno de ICMS</div>';
+      h+='<div style="display:flex;gap:20px;font-size:13px">';
+      if(totUsoConsumo>0)h+='<div><span style="color:#7c3aed;font-weight:600">🏷️ Uso/Consumo (CFOP 1556/2556):</span> <b>R$ '+f(totUsoConsumo)+'</b><div style="font-size:11px;color:#64748b;margin-top:2px">Crédito limitado — verificar aproveitamento</div></div>';
+      if(totImobilizado>0)h+='<div><span style="color:#0369a1;font-weight:600">🏗️ Imobilizado (CFOP 1551/2551):</span> <b>R$ '+f(totImobilizado)+'</b><div style="font-size:11px;color:#64748b;margin-top:2px">Crédito em 48 parcelas (CIAP)</div></div>';
+      h+='</div></div>';
+    }
+    
+    // Evolução mensal (se múltiplas competências)
+    if(allComps.length>1&&isTodos){
+      h+='<div style="margin-bottom:20px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">Evolução mensal</div>';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">Comp.</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#166534">Compras</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#b91c1c">Vendas</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#7c3aed">Uso/Cons.</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#0369a1">Imobiliz.</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">Markup</th></tr></thead><tbody>';
+      allComps.forEach((k,i)=>{
+        const p=con.porComp[k];const agg=p.cfopAgg||{};
+        let mc=0,mv=0,mu=0,mi=0;
+        Object.entries(agg).forEach(([cfop,v])=>{
+          if(EFD_CFOP_COMPRA.has(cfop))mc+=v.vl_opr;
+          if(EFD_CFOP_VENDA.has(cfop))mv+=v.vl_opr;
+          if(EFD_CFOP_USO_CONSUMO.has(cfop))mu+=v.vl_opr;
+          if(EFD_CFOP_IMOBILIZADO.has(cfop))mi+=v.vl_opr;
+        });
+        const mk=mc>0?((mv/mc-1)*100):0;
+        const compFmt=String(k).slice(4,6)+'/'+String(k).slice(0,4);
+        h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:4px 8px;font-weight:600">'+compFmt+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;color:#166534">R$ '+f(mc)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;color:#b91c1c">R$ '+f(mv)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;color:#7c3aed">'+(mu>0?'R$ '+f(mu):'—')+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;color:#0369a1">'+(mi>0?'R$ '+f(mi):'—')+'</td><td style="padding:4px 8px;text-align:right;font-weight:600;color:'+(mk>100?'#b91c1c':'var(--text)')+'">'+mk.toFixed(1)+'%</td></tr>';
+      });
+      h+='</tbody></table></div>';
+    }
+    
+    // Análise por produto (C170) - se disponível
+    const prodMap={};
+    let hasC170=false;
+    comps.forEach(k=>{
+      const efd=EFD_STATE.efdData.find(e=>e.competencia===parseInt(k));
+      if(!efd||!efd.c170.length)return;
+      hasC170=true;
+      efd.c170.forEach(it=>{
+        const key=it.cod_item;
+        if(!prodMap[key])prodMap[key]={cod:key,descr:'',qtdEnt:0,vlEnt:0,qtdSai:0,vlSai:0};
+        const p=prodMap[key];
+        const info=con.allItensCad.get(key);
+        if(info&&info.descr)p.descr=info.descr;
+        if(it.ind_oper==='0'){p.qtdEnt+=it.qtd;p.vlEnt+=it.vl_item;}
+        else{p.qtdSai+=it.qtd;p.vlSai+=it.vl_item;}
+      });
+    });
+    if(hasC170){
+      const prods=Object.values(prodMap).filter(p=>p.vlEnt>0||p.vlSai>0);
+      prods.sort((a,b)=>(b.vlEnt+b.vlSai)-(a.vlEnt+a.vlSai));
+      // Detectar "estoque desaparecido": comprou muito mas vendeu pouco
+      const suspeitos=prods.filter(p=>p.qtdEnt>0&&p.qtdSai>0&&p.qtdEnt>p.qtdSai*3);
+      h+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:8px 14px;background:var(--surface-2);border-radius:8px;font-size:12px;font-weight:700;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-bottom:4px"><span>▶</span> Movimentação por produto (C170) — '+prods.length+' itens'+(suspeitos.length?' · ⚠ '+suspeitos.length+' com acúmulo':'')+'</div>';
+      h+='<div style="display:none">';
+      if(suspeitos.length){
+        h+='<div style="padding:8px 12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;margin:8px 0;font-size:11px;color:#92400e"><b>⚠ Itens com acúmulo:</b> Entrada > 3× a saída no período. Pode indicar estoque represado, desvio ou erro de classificação.</div>';
+      }
+      h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:0 0 8px 8px;overflow:hidden;margin-top:4px"><thead><tr style="background:#f1f5f9"><th style="padding:4px 6px;text-align:left;font-size:9px;font-weight:700;color:#475569">Código</th><th style="padding:4px 6px;text-align:left;font-size:9px;font-weight:700;color:#475569">Descrição</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#166534">Qtd Ent.</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#166534">Vl. Ent.</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#b91c1c">Qtd Saí.</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#b91c1c">Vl. Saí.</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#475569">Saldo Qtd</th></tr></thead><tbody>';
+      prods.slice(0,100).forEach((p,i)=>{
+        const saldo=p.qtdEnt-p.qtdSai;
+        const isSusp=suspeitos.includes(p);
+        h+='<tr style="border-top:1px solid #f1f5f9;'+(isSusp?'background:#fffbeb;':i%2?'background:#fafbfc':'')+'"><td style="padding:3px 6px;font-family:monospace;font-size:10px">'+p.cod+'</td><td style="padding:3px 6px;font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis">'+(p.descr||'—')+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace;color:#166534">'+p.qtdEnt.toLocaleString('pt-BR')+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace;color:#166534">R$ '+f(p.vlEnt)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace;color:#b91c1c">'+p.qtdSai.toLocaleString('pt-BR')+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace;color:#b91c1c">R$ '+f(p.vlSai)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace;font-weight:700;color:'+(saldo>0?'#166534':'#b91c1c')+'">'+saldo.toLocaleString('pt-BR')+(isSusp?' ⚠':'')+'</td></tr>';
+      });
+      h+='</tbody></table>';
+      if(prods.length>100)h+='<div style="font-size:10px;color:#94a3b8;text-align:center;padding:4px">Top 100 de '+prods.length+'</div>';
+      h+='</div>';
+    }
+    
+    // Inventário (H010) se existir
+    const inv=con.h010All.filter(hi=>isTodos||String(hi.competencia)===EFD_STATE.compFiltro);
+    if(inv.length){
+      h+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:8px 14px;background:var(--surface-2);border-radius:8px;font-size:12px;font-weight:700;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-bottom:4px"><span>▶</span> Inventário físico (H010) — '+inv.length+' itens · R$ '+f(inv.reduce((s,i)=>s+i.vl_item,0))+'</div>';
+      h+='<div style="display:none"><table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:0 0 8px 8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:4px 6px;text-align:left;font-size:9px;font-weight:700;color:#475569">Código</th><th style="padding:4px 6px;text-align:left;font-size:9px;font-weight:700;color:#475569">Descrição</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#475569">Qtd</th><th style="padding:4px 6px;text-align:right;font-size:9px;font-weight:700;color:#475569">Valor</th></tr></thead><tbody>';
+      inv.sort((a,b)=>b.vl_item-a.vl_item).slice(0,100).forEach((it,i)=>{
+        const info=con.allItensCad.get(it.cod_item);
+        h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:3px 6px;font-family:monospace;font-size:10px">'+it.cod_item+'</td><td style="padding:3px 6px;font-size:10px;max-width:250px;overflow:hidden;text-overflow:ellipsis">'+(info?info.descr:'—')+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">'+it.qtd.toLocaleString('pt-BR')+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(it.vl_item)+'</td></tr>';
+      });
+      h+='</tbody></table>';
+      if(inv.length>100)h+='<div style="font-size:10px;color:#94a3b8;text-align:center;padding:4px">Top 100 de '+inv.length+'</div>';
+      h+='</div>';
+    }
+    c.innerHTML=h;return;
+  }
+  
+  if(tab==='dimp'){
+    if(!EFD_STATE.dimpData){c.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-3)">Nenhum arquivo DIMP carregado</div>';return;}
+    const dimp=EFD_STATE.dimpData;
+    let h='<div style="font-size:14px;font-weight:700;margin-bottom:16px">🏦 Cruzamento DIMP × EFD</div>';
+    
+    // Tabela mensal comparativa (sempre mostra todas, highlight selecionada)
+    const dimpComps=Object.keys(dimp.byComp).sort();
+    const allPeriods=[...new Set([...allComps,...dimpComps])].sort();
+    
+    h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;margin-bottom:20px"><thead><tr style="background:#f1f5f9"><th style="padding:8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Período</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#b91c1c">EFD Vendas</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#166534">DIMP Entradas</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Razão</th><th style="padding:8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Excedente DIMP</th></tr></thead><tbody>';
+    let totEfd=0,totDimp=0;
+    allPeriods.forEach((k,i)=>{
+      const efdVal=con.porComp[k]?con.porComp[k].vl_venda:0;
+      const dimpComp=dimp.byComp[k];
+      const dimpVal=dimpComp?dimpComp.entradas:0;
+      const razao=efdVal>0?(dimpVal/efdVal):0;
+      const excedente=dimpVal-efdVal;
+      totEfd+=efdVal;totDimp+=dimpVal;
+      const compFmt=String(k).slice(4,6)+'/'+String(k).slice(0,4);
+      const corRazao=razao>2?'#b91c1c':razao>1.5?'#92400e':'#166534';
+      const isSel=EFD_STATE.compFiltro===k;
+      h+='<tr onclick="efdSetComp('+(isSel?'\'todos\'':'\''+k+'\'')+')\" style="cursor:pointer;border-top:1px solid #f1f5f9;'+(isSel?'background:#dbeafe;font-weight:700':(i%2?'background:#fafbfc':''))+'"><td style="padding:6px 8px;font-weight:600">'+(isSel?'▸ ':'')+compFmt+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(efdVal)+'</td><td style="padding:6px 8px;text-align:right;font-family:monospace">R$ '+f(dimpVal)+'</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:'+corRazao+'">'+razao.toFixed(2)+'×</td><td style="padding:6px 8px;text-align:right;font-family:monospace;color:'+(excedente>0?'#b91c1c':'#166534')+'">R$ '+f(excedente)+'</td></tr>';
+    });
+    // Total
+    const razaoTotal=totEfd>0?(totDimp/totEfd):0;
+    h+='<tr style="border-top:2px solid #1e3a8a;background:#eff6ff"><td style="padding:8px;font-weight:800">TOTAL</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:700">R$ '+f(totEfd)+'</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:700">R$ '+f(totDimp)+'</td><td style="padding:8px;text-align:right;font-weight:800;font-size:14px;color:'+(razaoTotal>2?'#b91c1c':'#166534')+'">'+razaoTotal.toFixed(2)+'×</td><td style="padding:8px;text-align:right;font-family:monospace;font-weight:700;color:'+(totDimp-totEfd>0?'#b91c1c':'#166534')+'">R$ '+f(totDimp-totEfd)+'</td></tr>';
+    h+='</tbody></table>';
+    
+    // Alerta
+    if(razaoTotal>1.5){
+      h+='<div style="padding:14px 18px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;margin-bottom:20px">';
+      h+='<div style="font-size:13px;font-weight:700;color:#991b1b;margin-bottom:6px">⚠ Indício de omissão de receita</div>';
+      h+='<div style="font-size:12px;color:#7f1d1d">O volume financeiro movimentado nas instituições financeiras (DIMP) é <b>'+razaoTotal.toFixed(2)+'×</b> superior ao faturamento declarado na EFD. ';
+      h+='Excedente de <b>R$ '+f(totDimp-totEfd)+'</b> no período analisado. ';
+      h+='Valores acima de 1.5× merecem investigação — possível venda sem emissão de documento fiscal.</div></div>';
+    }
+    
+    // Breakdown por natureza (filtrado pela competência se selecionada)
+    const dimpRegs=isTodos?dimp.registros:dimp.registros.filter(r=>String(r.periodo)===EFD_STATE.compFiltro);
+    const natTotals={};
+    const natLabels={1:'Cartão Crédito',2:'Cartão Débito',3:'TED/Crédito em conta',4:'TED/Débito em conta',5:'Outros',6:'PIX',7:'Boleto/Arrecadação'};
+    dimpRegs.forEach(r=>{
+      let natKey=r.natureza;
+      if(natKey===6) natKey=r.ind_pix===1?'6r':'6e';
+      if(!natTotals[natKey])natTotals[natKey]={valor:0,qtd:0};
+      natTotals[natKey].valor+=r.valor;natTotals[natKey].qtd++;
+    });
+    const natKeys=Object.keys(natTotals).sort((a,b)=>natTotals[b].valor-natTotals[a].valor);
+    if(natKeys.length){
+      h+='<div style="font-size:13px;font-weight:700;margin-bottom:8px">Breakdown por natureza/meio de pagamento'+(isTodos?'':' — '+String(EFD_STATE.compFiltro).slice(4,6)+'/'+String(EFD_STATE.compFiltro).slice(0,4))+'</div>';
+      const totNat=natKeys.reduce((s,k)=>s+natTotals[k].valor,0);
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Nat.</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Tipo</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">%</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Classificação</th></tr></thead><tbody>';
+      natKeys.forEach((k,i)=>{
+        const v=natTotals[k];
+        const natNum=k==='6r'?6:k==='6e'?6:parseInt(k);
+        const label=k==='6r'?'PIX Recebido':k==='6e'?'PIX Enviado':(natLabels[natNum]||'Nat. '+k);
+        const cls=k==='6r'||[1,2,3,7].includes(natNum)?'📥 Entrada':k==='6e'||natNum===4?'📤 Saída':'❓ Outros';
+        const clsCor=cls.startsWith('📥')?'#166534':cls.startsWith('📤')?'#b91c1c':'#64748b';
+        const pct=totNat>0?((v.valor/totNat)*100):0;
+        h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:5px 8px;font-family:monospace;font-weight:600">'+k+'</td><td style="padding:5px 8px">'+label+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(v.valor)+'</td><td style="padding:5px 8px;text-align:right;font-size:11px;color:#64748b">'+pct.toFixed(1)+'%</td><td style="padding:5px 8px;text-align:right;color:'+clsCor+';font-weight:600;font-size:11px">'+cls+'</td></tr>';
+      });
+      h+='</tbody></table>';
+    }
+    c.innerHTML=h;return;
+  }
+  
+  // Placeholder restante
+  if(tab==='documentos'){
+    // Coletar C100 das competências filtradas
+    const allC100=[];
+    comps.forEach(k=>{
+      const p=con.porComp[k];
+      (p.saidasC100||[]).forEach(d=>allC100.push({...d,_tipo:'saida'}));
+      (p.entradasC100||[]).forEach(d=>allC100.push({...d,_tipo:'entrada'}));
+    });
+    // Filtrar tipo
+    let docs=EFD_STATE.docFiltro==='saidas'?allC100.filter(d=>d._tipo==='saida'):EFD_STATE.docFiltro==='entradas'?allC100.filter(d=>d._tipo==='entrada'):allC100;
+    // Busca
+    if(EFD_STATE.docBusca){
+      const q=EFD_STATE.docBusca.toLowerCase();
+      docs=docs.filter(d=>{
+        const cfops=d.itens?.length?d.itens.map(it=>it.cfop).join(' '):d.c190s?.length?d.c190s.map(r=>r.cfop).join(' '):'';
+        return (d.num_doc||'').includes(q)||(d.chv_nfe||'').toLowerCase().includes(q)||(d.cod_part||'').toLowerCase().includes(q)||(con.allParticipantes.get(d.cod_part)?.nome||'').toLowerCase().includes(q)||cfops.includes(q);
+      });
+    }
+    docs.sort((a,b)=>(a.dt_doc||'').localeCompare(b.dt_doc||'')||parseInt(a.num_doc||0)-parseInt(b.num_doc||0));
+    // Totais
+    const totSai=allC100.filter(d=>d._tipo==='saida');
+    const totEnt=allC100.filter(d=>d._tipo==='entrada');
+    // Paginação
+    const totalPag=Math.max(1,Math.ceil(docs.length/EFD_STATE.docPorPag));
+    if(EFD_STATE.docPagina>totalPag)EFD_STATE.docPagina=totalPag;
+    const pagStart=(EFD_STATE.docPagina-1)*EFD_STATE.docPorPag;
+    const pagDocs=docs.slice(pagStart,pagStart+EFD_STATE.docPorPag);
+    
+    let h='<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">';
+    h+='<span style="font-size:14px;font-weight:700">📄 Documentos Fiscais</span>';
+    h+='<div style="display:flex;gap:4px;background:var(--surface-2);padding:3px;border-radius:8px">';
+    const dBtn=(k,lbl,n)=>'<button onclick="EFD_STATE.docFiltro=\''+k+'\';EFD_STATE.docPagina=1;efdRenderTab()" style="padding:4px 10px;border:none;background:'+(EFD_STATE.docFiltro===k?'var(--primary)':'transparent')+';color:'+(EFD_STATE.docFiltro===k?'#fff':'var(--text-2)')+';border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">'+lbl+' '+n+'</button>';
+    h+=dBtn('todos','Todos',allC100.length)+dBtn('saidas','Saídas',totSai.length)+dBtn('entradas','Entradas',totEnt.length);
+    h+='</div>';
+    h+='<input type="text" placeholder="Buscar NF, chave, CFOP, participante..." value="'+(EFD_STATE.docBusca||'').replace(/"/g,'&quot;')+'" oninput="EFD_STATE.docBusca=this.value;EFD_STATE.docPagina=1;efdRenderTab()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:250px">';
+    h+='<span style="font-size:11px;color:var(--text-3);margin-left:auto">'+docs.length+' documento(s)</span>';
+    h+='</div>';
+    
+    h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)">';
+    h+='<thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;width:24px"></th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Tipo</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Data</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">NF</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">CFOP</th><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Participante</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">ICMS</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">ICMS-ST</th></tr></thead><tbody>';
+    pagDocs.forEach((d,i)=>{
+      const gi=pagStart+i;
+      const part=con.allParticipantes.get(d.cod_part);
+      const partNome=part?(part.nome||'').substring(0,28):(d.cod_part||'—');
+      const tipoLbl=d._tipo==='saida'?'<span style="color:#b91c1c;font-weight:700;font-size:10px">SAI</span>':'<span style="color:#166534;font-weight:700;font-size:10px">ENT</span>';
+      const dtFmt=d.dt_doc?d.dt_doc.substring(0,2)+'/'+d.dt_doc.substring(2,4)+'/'+d.dt_doc.substring(4):'—';
+      // CFOP: de C170 se existir, senão de C190
+      const cfops=d.itens&&d.itens.length?[...new Set(d.itens.map(it=>it.cfop).filter(Boolean))]:d.c190s&&d.c190s.length?[...new Set(d.c190s.map(r=>r.cfop).filter(Boolean))]:[];
+      const cfopLbl=cfops.length===1?cfopHtml(cfops[0]):cfops.length>1?'<span class="cfop-tip">'+cfops[0]+'+<span class="cfop-desc">'+cfops.map(c=>c+' — '+cfopTip(c)).join('<br>')+'</span></span>':'—';
+      h+='<tr style="cursor:pointer;border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'" onclick="(function(){var e=document.getElementById(\'efd-doc-'+gi+'\');e.style.display=e.style.display===\'none\'?\'table-row\':\'none\'})()"><td style="padding:4px 6px"><span style="font-size:10px;color:#94a3b8">▶</span></td><td style="padding:4px 8px">'+tipoLbl+'</td><td style="padding:4px 8px;font-family:monospace;font-size:11px">'+dtFmt+'</td><td style="padding:4px 8px;font-family:monospace;font-weight:600">'+d.num_doc+'</td><td style="padding:4px 8px;font-family:monospace;font-size:11px">'+cfopLbl+'</td><td style="padding:4px 8px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="'+(part?.nome||'')+'">'+partNome+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">R$ '+f(d.vl_doc)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;font-size:11px">R$ '+f(d.vl_icms)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;font-size:11px">R$ '+f(d.vl_icms_st)+'</td></tr>';
+      // Detail row
+      h+='<tr id="efd-doc-'+gi+'" style="display:none"><td colspan="9" style="padding:8px 12px;background:#f8fafc;border-top:1px solid #e2e8f0">';
+      h+='<div style="font-size:11px;color:#475569;display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px">';
+      h+='<span>Chave: <b style="font-family:monospace;font-size:10px">'+(d.chv_nfe||'—')+'</b></span>';
+      h+='<span>Série: <b>'+(d.ser||'—')+'</b></span>';
+      h+='<span>Modelo: <b>'+(d.cod_mod||'—')+'</b></span>';
+      h+='<span>Situação: <b>'+(d.cod_sit||'—')+'</b></span>';
+      if(d.vl_frt)h+='<span>Frete: <b>R$ '+f(d.vl_frt)+'</b></span>';
+      if(d.vl_ipi)h+='<span>IPI: <b>R$ '+f(d.vl_ipi)+'</b></span>';
+      h+='</div>';
+      // Itens C170
+      if(d.itens&&d.itens.length){
+        h+='<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin:6px 0 4px">Itens C170 ('+d.itens.length+')</div>';
+        h+='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#e2e8f0"><th style="padding:3px 6px;text-align:left">#</th><th style="padding:3px 6px;text-align:left">Item</th><th style="padding:3px 6px;text-align:left">CFOP</th><th style="padding:3px 6px;text-align:right">Qtd</th><th style="padding:3px 6px;text-align:right">Valor</th><th style="padding:3px 6px;text-align:right">ICMS</th></tr></thead><tbody>';
+        d.itens.forEach(it=>{
+          const itemInfo=con.allItensCad.get(it.cod_item);
+          const descr=itemInfo?(itemInfo.descr||'').substring(0,35):it.cod_item;
+          h+='<tr style="border-top:1px solid #e2e8f0"><td style="padding:2px 6px;color:#94a3b8">'+it.num_item+'</td><td style="padding:2px 6px" title="'+(itemInfo?.descr||it.cod_item)+'">'+descr+'</td><td style="padding:2px 6px">'+cfopHtml(it.cfop)+'</td><td style="padding:2px 6px;text-align:right">'+it.qtd.toLocaleString('pt-BR')+'</td><td style="padding:2px 6px;text-align:right;font-family:monospace">R$ '+f(it.vl_item)+'</td><td style="padding:2px 6px;text-align:right;font-family:monospace">R$ '+f(it.vl_icms)+'</td></tr>';
+        });
+        h+='</tbody></table>';
+      } else if(d.c190s&&d.c190s.length){
+        // Fallback: mostrar C190 quando não há C170
+        h+='<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin:6px 0 4px">Consolidação C190 ('+d.c190s.length+' registro(s)) — sem detalhamento de itens</div>';
+        h+='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#e2e8f0"><th style="padding:3px 6px;text-align:left">CST</th><th style="padding:3px 6px;text-align:left">CFOP</th><th style="padding:3px 6px;text-align:right">Alíq.</th><th style="padding:3px 6px;text-align:right">Vl. Operação</th><th style="padding:3px 6px;text-align:right">BC ICMS</th><th style="padding:3px 6px;text-align:right">ICMS</th><th style="padding:3px 6px;text-align:right">BC ST</th><th style="padding:3px 6px;text-align:right">ICMS-ST</th></tr></thead><tbody>';
+        d.c190s.forEach(r=>{
+          h+='<tr style="border-top:1px solid #e2e8f0"><td style="padding:2px 6px;font-family:monospace">'+r.cst_icms+'</td><td style="padding:2px 6px;font-weight:600">'+cfopHtml(r.cfop)+'</td><td style="padding:2px 6px;text-align:right">'+r.aliq_icms+'%</td><td style="padding:2px 6px;text-align:right;font-family:monospace">R$ '+f(r.vl_opr)+'</td><td style="padding:2px 6px;text-align:right;font-family:monospace">R$ '+f(r.vl_bc_icms)+'</td><td style="padding:2px 6px;text-align:right;font-family:monospace">R$ '+f(r.vl_icms)+'</td><td style="padding:2px 6px;text-align:right;font-family:monospace">R$ '+f(r.vl_bc_icms_st)+'</td><td style="padding:2px 6px;text-align:right;font-family:monospace">R$ '+f(r.vl_icms_st)+'</td></tr>';
+        });
+        h+='</tbody></table>';
+      } else {
+        h+='<div style="font-size:11px;color:#94a3b8;padding:8px">Sem detalhamento de itens ou consolidação</div>';
+      }
+      h+='</td></tr>';
+    });
+    h+='</tbody></table>';
+    // Paginação
+    if(totalPag>1){
+      h+='<div style="display:flex;justify-content:center;gap:4px;margin-top:12px;align-items:center">';
+      h+='<button onclick="EFD_STATE.docPagina=1;efdRenderTab()" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:11px" '+(EFD_STATE.docPagina<=1?'disabled':'')+'>&laquo;</button>';
+      h+='<button onclick="EFD_STATE.docPagina--;efdRenderTab()" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:11px" '+(EFD_STATE.docPagina<=1?'disabled':'')+'>&lsaquo;</button>';
+      h+='<span style="font-size:11px;color:var(--text-2);padding:0 8px">'+EFD_STATE.docPagina+' / '+totalPag+'</span>';
+      h+='<button onclick="EFD_STATE.docPagina++;efdRenderTab()" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:11px" '+(EFD_STATE.docPagina>=totalPag?'disabled':'')+'>&rsaquo;</button>';
+      h+='<button onclick="EFD_STATE.docPagina='+totalPag+';efdRenderTab()" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;font-size:11px" '+(EFD_STATE.docPagina>=totalPag?'disabled':'')+'>&raquo;</button>';
+      h+='</div>';
+    }
+    c.innerHTML=h;return;
+  }
+  
+  if(tab==='padroes'){
+    // Coletar todos os C100 das competências filtradas
+    const allDocs=[];
+    comps.forEach(k=>{
+      const p=con.porComp[k];
+      (p.saidasC100||[]).forEach(d=>allDocs.push(d));
+      (p.entradasC100||[]).forEach(d=>allDocs.push(d));
+    });
+    const saidas=allDocs.filter(d=>d.ind_oper==='1');
+    const vals=saidas.map(d=>d.vl_doc).filter(v=>v>0);
+    
+    let h='<div style="font-size:14px;font-weight:700;margin-bottom:20px">🔍 Análise de Padrões Estatísticos</div>';
+    
+    // 1. BENFORD
+    h+='<div style="margin-bottom:24px"><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">Lei de Benford — Distribuição do 1º dígito (valores de saída)</div>';
+    h+='<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Em dados naturais, o dígito 1 aparece ~30% das vezes como primeiro dígito. Desvios grandes podem indicar manipulação.</div>';
+    const benfordEsp=[0,30.1,17.6,12.5,9.7,7.9,6.7,5.8,5.1,4.6];
+    const digCount=new Array(10).fill(0);
+    vals.forEach(v=>{const d=parseInt(String(Math.abs(v))[0]);if(d>=1&&d<=9)digCount[d]++;});
+    const totalDig=digCount.slice(1).reduce((s,v)=>s+v,0);
+    if(totalDig>0){
+      h+='<div style="display:flex;gap:6px;align-items:flex-end;height:160px;padding:0 4px;margin-bottom:8px">';
+      for(let d=1;d<=9;d++){
+        const obs=((digCount[d]/totalDig)*100);
+        const esp=benfordEsp[d];
+        const desvio=Math.abs(obs-esp);
+        const cor=desvio>5?'#b91c1c':desvio>3?'#92400e':'#166534';
+        const hPx=Math.max(obs*3.5,4);
+        const hEsp=esp*3.5;
+        h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">';
+        h+='<span style="font-size:10px;font-weight:700;color:'+cor+'">'+obs.toFixed(1)+'%</span>';
+        h+='<div style="width:100%;position:relative;height:'+Math.max(hPx,hEsp)+'px">';
+        h+='<div style="position:absolute;bottom:0;width:100%;height:'+hPx+'px;background:'+cor+';border-radius:4px 4px 0 0;opacity:.8"></div>';
+        h+='<div style="position:absolute;bottom:'+(hEsp-1)+'px;width:100%;height:2px;background:#94a3b8" title="Esperado: '+esp+'%"></div>';
+        h+='</div>';
+        h+='<span style="font-size:12px;font-weight:700;color:var(--text)">'+d+'</span>';
+        h+='</div>';
+      }
+      h+='</div>';
+      h+='<div style="display:flex;gap:12px;font-size:10px;color:#94a3b8"><span>▬ Linha cinza = valor esperado (Benford)</span><span style="color:#166534">■ Verde = desvio ≤3pp</span><span style="color:#92400e">■ Amarelo = 3-5pp</span><span style="color:#b91c1c">■ Vermelho = >5pp</span><span>· '+totalDig+' valores analisados</span></div>';
+    } else {
+      h+='<div style="color:var(--text-3);font-size:12px">Sem valores de saída para analisar</div>';
+    }
+    h+='</div>';
+    
+    // 2. VALORES REDONDOS
+    h+='<div style="margin-bottom:24px"><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">Valores Redondos</div>';
+    h+='<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Concentração excessiva de valores terminando em ,00 ou múltiplos de 100/1000 pode indicar estimativa em vez de registro real.</div>';
+    if(vals.length>10){
+      const redondo00=vals.filter(v=>Math.abs(v-Math.round(v))<0.01).length;
+      const redondo100=vals.filter(v=>v>=100&&Math.abs(v%100)<0.01).length;
+      const redondo1000=vals.filter(v=>v>=1000&&Math.abs(v%1000)<0.01).length;
+      const pct00=((redondo00/vals.length)*100);
+      const pct100=((redondo100/vals.length)*100);
+      const pct1000=((redondo1000/vals.length)*100);
+      h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
+      const rdCard=(lbl,n,pct,limiar)=>{
+        const cor=pct>limiar?'#b91c1c':pct>limiar*0.7?'#92400e':'#166534';
+        return '<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center"><div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:4px">'+lbl+'</div><div style="font-size:22px;font-weight:800;color:'+cor+'">'+pct.toFixed(1)+'%</div><div style="font-size:11px;color:#94a3b8">'+n+' de '+vals.length+'</div></div>';
+      };
+      h+=rdCard('Terminam em ,00',redondo00,pct00,40);
+      h+=rdCard('Múltiplos de R$ 100',redondo100,pct100,20);
+      h+=rdCard('Múltiplos de R$ 1.000',redondo1000,pct1000,10);
+      h+='</div>';
+    } else {
+      h+='<div style="color:var(--text-3);font-size:12px">Poucos valores para análise significativa</div>';
+    }
+    h+='</div>';
+    
+    // 3. GAPS DE NUMERAÇÃO (por série + modelo)
+    h+='<div style="margin-bottom:24px"><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">Gaps na Numeração de Documentos (saídas)</div>';
+    h+='<div style="font-size:11px;color:var(--text-3);margin-bottom:12px">Análise por série/modelo. Gaps podem ser cancelamentos, inutilizações ou notas emitidas para outra UF não declaradas na EFD.</div>';
+    // Coletar TODOS os C100 de saída (incluindo cancelados) para contexto
+    const allSaidasComCanc=[];
+    comps.forEach(k=>{
+      const efd=EFD_STATE.efdData.find(e=>e.competencia===parseInt(k));
+      if(efd) efd.c100.filter(c=>c.ind_oper==='1'&&c.ind_emit==='0').forEach(c=>allSaidasComCanc.push(c));
+    });
+    // Agrupar por série+modelo
+    const serieGroups={};
+    allSaidasComCanc.forEach(d=>{
+      const key=(d.cod_mod||'55')+'/'+(d.ser||'1');
+      if(!serieGroups[key])serieGroups[key]={mod:d.cod_mod||'55',ser:d.ser||'1',docs:[],cancelados:0};
+      serieGroups[key].docs.push({num:parseInt(d.num_doc),sit:d.cod_sit});
+      if(d.cod_sit&&!EFD_COD_SIT_VALIDO.has(d.cod_sit))serieGroups[key].cancelados++;
+    });
+    const serieKeys=Object.keys(serieGroups).sort();
+    if(serieKeys.length){
+      serieKeys.forEach(key=>{
+        const sg=serieGroups[key];
+        const nums=sg.docs.map(d=>d.num).filter(n=>!isNaN(n)&&n>0).sort((a,b)=>a-b);
+        if(nums.length<2)return;
+        const uniq=[...new Set(nums)];
+        const gaps=[];
+        for(let i=1;i<uniq.length;i++){
+          const diff=uniq[i]-uniq[i-1];
+          if(diff>1)gaps.push({de:uniq[i-1],ate:uniq[i],faltam:diff-1});
+        }
+        gaps.sort((a,b)=>b.faltam-a.faltam);
+        const totalFalta=gaps.reduce((s,g)=>s+g.faltam,0);
+        const modLabel=sg.mod==='55'?'NF-e':sg.mod==='65'?'NFC-e':sg.mod==='59'?'CF-e SAT':'Mod '+sg.mod;
+        h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:10px">';
+        h+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><span style="font-size:12px;font-weight:700;color:var(--text)">'+modLabel+' · Série '+sg.ser+'</span>';
+        h+='<span style="font-size:11px;color:var(--text-3)">'+uniq.length+' docs · nº '+uniq[0]+' → '+uniq[uniq.length-1]+'</span>';
+        if(sg.cancelados)h+='<span style="font-size:10px;padding:2px 6px;background:#fef3c7;color:#92400e;border-radius:4px;font-weight:600">'+sg.cancelados+' cancelado(s)</span>';
+        h+='</div>';
+        if(gaps.length===0){
+          h+='<div style="padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:11px;color:#166534;font-weight:600">✓ Sequência contínua — nenhum gap</div>';
+        } else {
+          h+='<div style="display:flex;gap:12px;margin-bottom:8px"><span style="font-size:11px;color:#b91c1c;font-weight:600">'+gaps.length+' gap(s) · '+totalFalta+' nº(s) faltando</span></div>';
+          // Top 10 maiores gaps
+          const topGaps=gaps.slice(0,10);
+          h+='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc"><th style="padding:3px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">Após NF</th><th style="padding:3px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">Antes NF</th><th style="padding:3px 8px;text-align:center;font-size:9px;font-weight:700;color:#475569">Faltam</th><th style="padding:3px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">Faixa ausente</th></tr></thead><tbody>';
+          topGaps.forEach((g,i)=>{
+            const faixaLbl=g.faltam<=3?Array.from({length:g.faltam},(_,j)=>g.de+1+j).join(', '):(g.de+1)+' a '+(g.ate-1);
+            h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:3px 8px;font-family:monospace">'+g.de+'</td><td style="padding:3px 8px;font-family:monospace">'+g.ate+'</td><td style="padding:3px 8px;text-align:center;font-weight:700;color:#b91c1c">'+g.faltam+'</td><td style="padding:3px 8px;font-size:10px;color:#64748b;font-family:monospace">'+faixaLbl+'</td></tr>';
+          });
+          h+='</tbody></table>';
+          if(gaps.length>10)h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Mostrando os 10 maiores gaps de '+gaps.length+' total</div>';
+        }
+        h+='</div>';
+      });
+    } else {
+      h+='<div style="color:var(--text-3);font-size:12px">Poucos documentos para análise de gaps</div>';
+    }
+    h+='</div>';
+    
+    // 4. CONCENTRAÇÃO TEMPORAL
+    h+='<div style="margin-bottom:24px"><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">Distribuição Temporal (saídas por dia do mês)</div>';
+    const diaDist=new Array(32).fill(0);
+    saidas.forEach(d=>{if(d.dt_doc&&d.dt_doc.length>=2){const dia=parseInt(d.dt_doc.substring(0,2));if(dia>=1&&dia<=31)diaDist[dia]++;}});
+    const maxDia=Math.max(...diaDist.slice(1));
+    if(maxDia>0){
+      h+='<div style="display:flex;gap:2px;align-items:flex-end;height:80px;padding:0 2px">';
+      for(let d=1;d<=31;d++){
+        const hPx=maxDia>0?(diaDist[d]/maxDia)*70:0;
+        const isZero=diaDist[d]===0;
+        h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px" title="Dia '+d+': '+diaDist[d]+' doc(s)">';
+        h+='<div style="width:100%;height:'+Math.max(hPx,1)+'px;background:'+(isZero?'#e2e8f0':'var(--primary)')+';border-radius:2px 2px 0 0;opacity:'+(isZero?'.3':'.8')+'"></div>';
+        h+='<span style="font-size:8px;color:#94a3b8">'+(d%5===0||d===1?d:'')+'</span>';
+        h+='</div>';
+      }
+      h+='</div>';
+      h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Dias sem emissão: '+diaDist.slice(1,32).filter(v=>v===0).length+' · Dia com mais emissões: dia '+(diaDist.indexOf(maxDia))+' ('+maxDia+' docs)</div>';
+    }
+    h+='</div>';
+    
+    c.innerHTML=h;return;
+  }
+  
+  // Placeholder restante
+  c.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--text-3)"><div style="font-size:48px;margin-bottom:12px">🔧</div><div style="font-size:14px">Tab não encontrada</div></div>';
+}
+
+/* --- EFD Excel Export --- */
+async function efdExportar(){
+  const con=EFD_STATE.consolidated;if(!con){alert('Processe EFDs primeiro.');return;}
+  const wb=new ExcelJS.Workbook();const hoje=new Date().toISOString().substring(0,10);
+  const r2=v=>typeof v==='number'?Math.round(v*100)/100:v;
+  const e=EFD_STATE.empresa;
+  const comps=Object.keys(con.porComp).sort();
+  
+  // Aba 1: Resumo mensal
+  {const hd=['Competência','Vendas','Devoluções','Fat. Líquido','Compras','ICMS Próprio','ICMS-ST','Saídas','Entradas'];
+  const ws=wb.addWorksheet('Resumo',{views:[{state:'frozen',ySplit:4}]});
+  xlTitle(ws,'📊 EFD ICMS — '+e.nome,hd.length,1);
+  xlSubtitle(ws,'CNPJ '+e.cnpj+' · '+comps.length+' competência(s) · Gerado em '+hoje,hd.length,2);
+  ws.getRow(3).height=4;xlHeaderRow(ws,hd,4);
+  comps.forEach((k,i)=>{
+    const p=con.porComp[k];const rn=5+i;const z=i%2===1;
+    const icms=p.e110?p.e110.vl_icms_recolher:0;const st=p.e210?p.e210.vl_icms_recol_st:0;
+    xlDataRow(ws,[String(k).slice(4,6)+'/'+String(k).slice(0,4),r2(p.vl_venda),r2(p.vl_devol_venda),r2(p.vl_venda-p.vl_devol_venda),r2(p.vl_compra),r2(icms),r2(st),p.qtdSaidas,p.qtdEntradas],rn,z);
+    [2,3,4,5,6,7].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+  });
+  xlAutoWidth(ws,[12,16,16,16,16,16,16,10,10]);}
+  
+  // Aba 2: Documentos (saídas)
+  {const hd=['Comp.','Tipo','Data','NF','Série','Chave','Participante','CNPJ','Valor','BC ICMS','ICMS','BC ST','ICMS-ST','CFOP'];
+  const ws=wb.addWorksheet('Documentos',{views:[{state:'frozen',ySplit:4}]});
+  xlTitle(ws,'📄 DOCUMENTOS FISCAIS',hd.length,1);
+  xlSubtitle(ws,e.nome+' · Gerado em '+hoje,hd.length,2);
+  ws.getRow(3).height=4;xlHeaderRow(ws,hd,4);
+  let rn=5;
+  comps.forEach(k=>{
+    const p=con.porComp[k];
+    const docs=[...(p.saidasC100||[]).map(d=>({...d,_t:'Saída'})),...(p.entradasC100||[]).map(d=>({...d,_t:'Entrada'}))];
+    docs.forEach(d=>{
+      const part=con.allParticipantes.get(d.cod_part)||{};
+      const cfops=d.itens?.length?[...new Set(d.itens.map(it=>it.cfop))].join(';'):d.c190s?.length?[...new Set(d.c190s.map(r=>r.cfop))].join(';'):'';
+      const z=(rn-5)%2===1;
+      xlDataRow(ws,[String(k).slice(4,6)+'/'+String(k).slice(0,4),d._t,d.dt_doc,d.num_doc,d.ser,d.chv_nfe,part.nome||'',part.cnpj||'',r2(d.vl_doc),r2(d.vl_bc_icms),r2(d.vl_icms),r2(d.vl_bc_icms_st),r2(d.vl_icms_st),cfops],rn,z);
+      [9,10,11,12,13].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+      rn++;
+    });
+  });
+  xlAutoWidth(ws,[8,7,10,8,4,48,30,16,14,14,14,14,14,10]);}
+  
+  // Aba 3: Apuração ICMS
+  {const hd=['Competência','Débitos','Créditos','Saldo Apurado','Deduções','A Recolher','Saldo Credor'];
+  const ws=wb.addWorksheet('Apuração ICMS',{views:[{state:'frozen',ySplit:4}]});
+  xlTitle(ws,'🧮 APURAÇÃO ICMS PRÓPRIO',hd.length,1);
+  xlSubtitle(ws,e.nome,hd.length,2);ws.getRow(3).height=4;xlHeaderRow(ws,hd,4);
+  comps.forEach((k,i)=>{
+    const p=con.porComp[k];const e1=p.e110;if(!e1)return;const rn=5+i;const z=i%2===1;
+    xlDataRow(ws,[String(k).slice(4,6)+'/'+String(k).slice(0,4),r2(e1.vl_tot_debitos),r2(e1.vl_tot_creditos),r2(e1.vl_sld_apurado),r2(e1.vl_tot_ded),r2(e1.vl_icms_recolher),r2(e1.vl_sld_credor_transportar)],rn,z);
+    [2,3,4,5,6,7].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+    xlDivCell(ws.getCell(rn,6),e1.vl_icms_recolher);
+  });
+  xlAutoWidth(ws,[12,16,16,16,16,16,16]);}
+  
+  // Aba 4: Apuração ST
+  {const hd=['Competência','Retenções','Devoluções','Créditos ST','ST a Recolher','Saldo Credor'];
+  const ws=wb.addWorksheet('Apuração ST',{views:[{state:'frozen',ySplit:4}]});
+  xlTitle(ws,'🏷️ APURAÇÃO ICMS-ST',hd.length,1);
+  xlSubtitle(ws,e.nome,hd.length,2);ws.getRow(3).height=4;xlHeaderRow(ws,hd,4);
+  comps.forEach((k,i)=>{
+    const p=con.porComp[k];const e2=p.e210;if(!e2)return;const rn=5+i;const z=i%2===1;
+    xlDataRow(ws,[String(k).slice(4,6)+'/'+String(k).slice(0,4),r2(e2.vl_retencao_st),r2(e2.vl_devol_st),r2(e2.vl_out_cred_st),r2(e2.vl_icms_recol_st),r2(e2.vl_sld_cred_st_transportar)],rn,z);
+    [2,3,4,5,6].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+  });
+  xlAutoWidth(ws,[12,16,16,16,16,16]);}
+  
+  // Aba 5: Participantes
+  {const hd=['Tipo','Código','Nome','CNPJ','Docs','Valor Total'];
+  const ws=wb.addWorksheet('Participantes',{views:[{state:'frozen',ySplit:4}]});
+  xlTitle(ws,'👥 PARTICIPANTES',hd.length,1);xlSubtitle(ws,e.nome,hd.length,2);
+  ws.getRow(3).height=4;xlHeaderRow(ws,hd,4);let rn=5;
+  const destT={};const fornT={};
+  comps.forEach(k=>{
+    Object.values(con.porComp[k].destMap||{}).forEach(d=>{if(!destT[d.cod_part])destT[d.cod_part]={...d,qtd:0,valor:0};destT[d.cod_part].qtd+=d.qtd;destT[d.cod_part].valor+=d.valor;});
+    (con.porComp[k].entradasC100||[]).forEach(c=>{const pr=con.allParticipantes.get(c.cod_part)||{};if(!fornT[c.cod_part])fornT[c.cod_part]={cod_part:c.cod_part,nome:pr.nome||'?',cnpj:pr.cnpj||'',qtd:0,valor:0};fornT[c.cod_part].qtd++;fornT[c.cod_part].valor+=c.vl_doc;});
+  });
+  Object.values(destT).sort((a,b)=>b.valor-a.valor).forEach(d=>{const z=(rn-5)%2===1;xlDataRow(ws,['Cliente',d.cod_part,d.nome,d.cnpj,d.qtd,r2(d.valor)],rn,z);xlMoneyCell(ws.getCell(rn,6),z);rn++;});
+  Object.values(fornT).sort((a,b)=>b.valor-a.valor).forEach(d=>{const z=(rn-5)%2===1;xlDataRow(ws,['Fornecedor',d.cod_part,d.nome,d.cnpj,d.qtd,r2(d.valor)],rn,z);xlMoneyCell(ws.getCell(rn,6),z);rn++;});
+  xlAutoWidth(ws,[10,16,35,16,8,16]);}
+  
+  // Aba 6: Alertas
+  if(EFD_STATE.alertas.length){
+    const hd=['Nível','Tab','Descrição'];
+    const ws=wb.addWorksheet('Alertas',{views:[{state:'frozen',ySplit:4}]});
+    xlTitle(ws,'⚠ ALERTAS DETECTADOS',hd.length,1);xlSubtitle(ws,e.nome+' · '+hoje,hd.length,2);
+    ws.getRow(3).height=4;xlHeaderRow(ws,hd,4);
+    EFD_STATE.alertas.forEach((a,i)=>{const rn=5+i;xlDataRow(ws,[a.nivel.toUpperCase(),a.tab,a.msg],rn,i%2===1);});
+    xlAutoWidth(ws,[10,14,60]);
+  }
+  
+  await xlSave(wb,'EFD_'+e.cnpj+'_'+hoje+'.xlsx');
 }
 
 </script></body></html>

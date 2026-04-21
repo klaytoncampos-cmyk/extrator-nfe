@@ -326,7 +326,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu" id="sb-toggle">◀</div>
 <div class="nav-item active" onclick="navTo('home',this)"><span>🏠</span><span>Início</span></div>
 <div class="nav-section">Monitoramento</div>
-<div class="nav-item" onclick="navTo('autopecas',this)"><span>🔧</span><span>Autopeças</span></div>
+<div class="nav-item" onclick="navTo('autopecas',this)"><span>🔧</span><span>Autopeças e Derivados</span></div>
 <div class="nav-item" onclick="navTo('veiculos',this)"><span>🚗</span><span>Veículos</span></div>
 <div class="nav-item" onclick="navTo('celulares',this)"><span>📱</span><span>Celulares</span></div>
 <div class="nav-section">Declarações</div>
@@ -349,8 +349,8 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:28px">
   <div class="mon-wcard" onclick="navTo('autopecas')" style="cursor:pointer;padding:24px 20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
     <div style="font-size:32px;margin-bottom:10px">🔧</div>
-    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Autopeças</div>
-    <div style="font-size:11px;color:var(--text-3);line-height:1.4">Protocolos 41/08, 97/10 · MVA por CEST · Conv. 06/09</div>
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Autopeças e Derivados</div>
+    <div style="font-size:11px;color:var(--text-3);line-height:1.4">Peças · Baterias · Pneumáticos · Lubrificantes</div>
   </div>
   <div class="mon-wcard" onclick="navTo('veiculos')" style="cursor:pointer;padding:24px 20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
     <div style="font-size:32px;margin-bottom:10px">🚗</div>
@@ -583,7 +583,7 @@ function navTo(sec,el){
 }
 
 const MON_META={
-  autopecas:{icon:'🔧',titulo:'Autopeças ICMS-ST',desc:'Análise de conformidade ICMS-ST em autopeças (Protocolos 41/08, 97/10, MVA por CEST, Conv. 06/09).'},
+  autopecas:{icon:'🔧',titulo:'Autopeças e Derivados Automotivos',desc:'Autopeças (Prot. 41/08), Baterias (Prot. 18/85), Pneumáticos (Conv. 102/17) e verificação de Lubrificantes (Conv. 110/07).'},
   veiculos:{icon:'🚗',titulo:'Veículos ICMS-ST',desc:'Monitoramento de ICMS-ST em veículos (Conv. 51/00, 199/17, 64/06, FUMACOP).'},
   celulares:{icon:'📱',titulo:'Celulares ICMS-ST',desc:'Análise de conformidade ICMS-ST em celulares e smartphones (Conv. 213/17, MVA 9%).'}
 };
@@ -629,7 +629,7 @@ function monExecutar(){
 function monLimpar(){
   // Limpa dados mas mantém o módulo selecionado
   todasNotas=[];todosItens=[];
-  paVeicResultados=[];paResultados=[];
+  paVeicResultados=[];paResultados=[];paObservacoes=[];paDescartados=0;paIncluirExcluidos=false;
   document.getElementById('kpi-notas').textContent='0';
   document.getElementById('kpi-itens').textContent='0';
   const mr=document.getElementById('mon-results');if(mr)mr.innerHTML='';
@@ -1160,32 +1160,152 @@ async function exportar(){
 }
 /* ══════════ PRÉ-AUDITORIA ══════════ */
 let paResultados=[];
+let paObservacoes=[];
+let paDescartados=0;
 let paTabAtual='sem';
-const PA_MVA_ORIG=0.7178;
+let paIncluirExcluidos=false; // Toggle: incluir CESTs excluídos pelo Prot. 95/22 no cálculo
 
-/* --- MVAs originais por segmento (Pneumáticos = CEST 16.xxx) --- */
+/* === SEGMENTOS AUTOMOTIVOS - MVAs e classificacao === */
+const MVA_AUTOPECAS=0.7178; // Anexo 4.41 RICMS/MA - Prot. 41/08
+const MVA_BATERIAS=0.40;    // Anexo 4.15 RICMS/MA - Prot. 18/85
+const MVA_LUBRI_FALLBACK=0.30; // Anexo 4.11 art. 11 (fallback sem PMPF)
+
 const MVA_PNEUMATICOS=[
-  {cest:'1600100',ncm:'40111000',mva:0.42},  // Pneus automóveis/caminhonetas
-  {cest:'1600200',ncm:'4011',mva:0.32},       // Pneus caminhões/ônibus/tratores
-  {cest:'1600300',ncm:'40114000',mva:0.60},   // Pneus motocicletas
-  {cest:'1600400',ncm:'4011',mva:0.45},       // Outros pneus
-  {cest:'1600700',ncm:'401290',mva:0.45},     // Protetores de borracha
-  {cest:'1600800',ncm:'4013',mva:0.45},       // Câmaras de ar
+  {cest:'1600100',ncm:'40111000',mva:0.42},
+  {cest:'1600200',ncm:'4011',mva:0.32},
+  {cest:'1600300',ncm:'40114000',mva:0.60},
+  {cest:'1600400',ncm:'4011',mva:0.45},
+  {cest:'1600700',ncm:'401290',mva:0.45},
+  {cest:'1600800',ncm:'4013',mva:0.45},
 ];
+
+// CESTs excluidos do Prot. 41/08 pelo Prot. 95/22 (efeitos a partir de 01/02/2023)
+const CEST_EXCL_PROT95=['0101900','0106201','0111200','0112700','0112800','0199900'];
+
+// Signatários dos protocolos de autopeças (destino MA)
+// Prot. 41/08: AC,AL,AP,AM,BA,MA,MT,MG,PA,PB,PR,PI,RJ,RR,SP,DF (RS saiu 01/11/2024)
+// Prot. 97/10: AC,AL,AP,BA,GO,MA,MT,PB,PA,PR,PE,PI,RN,RR,SE,SC,TO (RS saiu 01/11/2024)
+const UF_PROT41=new Set(['AC','AL','AP','AM','BA','MA','MT','MG','PA','PB','PR','PI','RJ','RR','SP','DF']);
+const UF_PROT97=new Set(['AC','AL','AP','BA','GO','MA','MT','PB','PA','PR','PE','PI','RN','RR','SE','SC','TO']);
+// UFs APENAS no Prot. 41/08 (onde exclusão de CESTs se aplica)
+const UF_SO_PROT41=new Set(['AM','MG','RJ','SP','DF']);
+
+// Verifica se a exclusão de CESTs do Prot. 95/22 se aplica para a UF remetente
+function cestExcluidoAplica(ufEmit,dataStr){
+  // RS saiu de ambos os protocolos em 01/11/2024
+  if(ufEmit==='RS'){
+    const d=(dataStr||'').replace(/\//g,'-');
+    if(d>='2024-11-01') return 'sem_protocolo'; // RS não é mais signatário
+    // Antes de 01/11/2024: RS era signatário de ambos → Prot. 97/10 cobre (sem exclusão)
+    return false;
+  }
+  // Se UF é signatário do Prot. 97/10, a exclusão NÃO se aplica (Prot. 97/10 não tem exclusões)
+  if(UF_PROT97.has(ufEmit)) return false;
+  // Se UF é signatário APENAS do Prot. 41/08, a exclusão se aplica
+  if(UF_SO_PROT41.has(ufEmit)) return true;
+  // UF não é signatário de nenhum protocolo
+  return 'sem_protocolo';
+}
+
+// NCMs de bateria/pilha - Anexo 4.15 (Prot. 18/85)
+const NCM_BATERIAS_SET=new Set(['8506','850730','85073011','850780','85078000']);
+
+function isBateria(ncm){
+  const n=(ncm||'').replace(/\./g,'');
+  return n.startsWith('8506')||n.startsWith('850730')||n.startsWith('850780');
+}
+
+// Classificar item em segmento automotivo
+function classificarSegmento(item,dataStr,ufEmit){
+  const cest=(item.CEST||'').replace(/\./g,'');
+  const ncm=(item.NCM||'').replace(/\./g,'');
+  const cfop=(item.CFOP||'').trim();
+
+  // Sucata (NCM 8548)
+  if(ncm.startsWith('8548')) return {seg:'descartado',motivo:'Sucata/residuo (NCM 8548)'};
+
+  // CFOPs nao comerciais
+  if(cfop==='6910') return {seg:'observacao',motivo:'Bonificacao/doacao (CFOP 6910)',tag:'🎁'};
+  if(cfop==='6911') return {seg:'observacao',motivo:'Amostra gratis (CFOP 6911)',tag:'🧪'};
+  if(cfop==='6652') return {seg:'observacao',motivo:'Transferencia uso/consumo (CFOP 6652)',tag:'🔄'};
+
+  // Lubrificantes (CEST 06.xxx) - Anexo 4.11
+  if(cest.startsWith('06')) return {seg:'lubrificante',tag:'🛢️',base:'Anexo 4.11 - Conv. 110/07'};
+
+  // CEST 28.xxx - uso automotivo
+  if(cest.startsWith('28')) return {seg:'observacao',motivo:'Uso automotivo (CEST 28) - verificar enquadramento',tag:'🧪'};
+
+  // Pneumaticos (CEST 16.xxx) - Anexo 4.16
+  if(cest.startsWith('16')){
+    let mva=MVA_AUTOPECAS;
+    for(const p of MVA_PNEUMATICOS){if(cest===p.cest){mva=p.mva;break;}}
+    if(mva===MVA_AUTOPECAS){for(const p of MVA_PNEUMATICOS){if(ncm.startsWith(p.ncm.replace(/\./g,''))){mva=p.mva;break;}}}
+    return {seg:'pneumatico',tag:'🛞',mva,base:'Anexo 4.16 - Conv. 102/17'};
+  }
+
+  // Baterias (NCM 8506/8507 ou CEST 01.058)
+  if(isBateria(ncm)||cest==='0105800'){
+    return {seg:'bateria',tag:'🔋',mva:MVA_BATERIAS,base:'Anexo 4.15 - Prot. 18/85'};
+  }
+
+  // Palavras-chave que indicam autopeça legítima
+  const PALAVRAS_AUTOPECA=/coifa|homocinetic|junta|filtro|mangueira|correia|amortecedor|pastilha|disco|freio|embreagem|rolamento|bucha|bieleta|terminal|pivô|pivo|bandeja|coxim|guarda.?pó|retrovisor|farol|lanterna|para.?choque|radiador|ventoinha|bomba.?d.?água|tensor|polia|válvula|vela|bobina|alternador|motor.?partida|compressor/i;
+
+  // CESTs excluidos pelo Prot. 95/22 — verificar se a exclusão se aplica (depende da UF e protocolo)
+  if(CEST_EXCL_PROT95.includes(cest)){
+    const d=(dataStr||'').replace(/\//g,'-');
+    if(d>='2023-02-01'){
+      const excl=cestExcluidoAplica(ufEmit,dataStr);
+      if(excl==='sem_protocolo'){
+        // UF não signatária — antecipação tributária, calcular normalmente
+        return {seg:'autopeca',tag:'🔧',mva:MVA_AUTOPECAS,base:'Anexo 4.41 - Antecipação tributária (UF '+ufEmit+' sem protocolo vigente)'};
+      }
+      if(excl===false){
+        // UF coberta pelo Prot. 97/10 (sem exclusões) — calcular normalmente
+        // Nenhuma exclusão se aplica porque o Prot. 97/10 não exclui esses CESTs
+      } else {
+        // excl===true → UF só no Prot. 41/08 (AM,MG,RJ,SP,DF) — exclusão se aplica
+        // Prioridade 1: NCM é autopeça conhecida → CEST está errado, calcular
+        if(isNCMAutopecas(ncm)){
+          return {seg:'autopeca',tag:'🔧',mva:MVA_AUTOPECAS,base:'Anexo 4.41 - Prot. 41/08',forcado:true,
+            alertaForcado:'NCM '+(item.NCM||'')+' é autopeça — CEST '+(item.CEST||'')+' provavelmente incorreto. CEST correto não está excluído do Prot. 41/08.'};
+        }
+        // Prioridade 2: descrição sugere autopeça → provavelmente NCM+CEST errados, calcular
+        const desc=(item.xProd||'').trim();
+        if(PALAVRAS_AUTOPECA.test(desc)){
+          return {seg:'autopeca',tag:'🔧',mva:MVA_AUTOPECAS,base:'Anexo 4.41 - Prot. 41/08',forcado:true,
+            alertaForcado:'Descrição "'+desc.substring(0,40)+'" sugere autopeça — NCM '+(item.NCM||'')+' e CEST '+(item.CEST||'')+' possivelmente incorretos (UF '+ufEmit+' só Prot. 41/08).'};
+        }
+        // Prioridade 3: toggle manual do auditor
+        if(paIncluirExcluidos){
+          return {seg:'autopeca',tag:'🔧',mva:MVA_AUTOPECAS,base:'Anexo 4.41 - Prot. 41/08 (CEST excluído — incluído manualmente)',forcado:true};
+        }
+        // Nenhuma evidência de autopeça → observação
+        return {seg:'observacao',motivo:'CEST '+(item.CEST||cest)+' excluido do Prot. 41/08 (Prot. 95/22) — UF '+ufEmit+' não é signatária do Prot. 97/10',tag:'📋'};
+      }
+    }
+    // Antes de 01/02/2023 ou UF coberta pelo Prot. 97/10: sujeito a ST normalmente (cai no default abaixo)
+  }
+
+  // CEST 01.015.00 + SP (a partir de 01/01/2026)
+  if(cest==='0101500'&&ufEmit==='SP'){
+    const d=(dataStr||'').replace(/\//g,'-');
+    if(d>='2026-01-01') return {seg:'observacao',motivo:'CEST 01.015.00 excluido para operacoes com SP (Prot. 85/25)',tag:'📋'};
+  }
+
+  // Autopecas (CEST 01.xxx ou NCM de autopecas) - Anexo 4.41
+  return {seg:'autopeca',tag:'🔧',mva:MVA_AUTOPECAS,base:'Anexo 4.41 - Prot. 41/08'};
+}
 
 function getMVAOriginal(item){
   const cest=(item.CEST||'').replace(/\./g,'');
   const ncm=(item.NCM||'').replace(/\./g,'');
-  if(!cest.startsWith('16')) return PA_MVA_ORIG; // Não é pneumático → MVA padrão autopeças
-  // Buscar match exato por CEST primeiro
-  for(const p of MVA_PNEUMATICOS){
-    if(cest===p.cest) return p.mva;
+  if(isBateria(ncm)||cest==='0105800') return MVA_BATERIAS;
+  if(cest.startsWith('16')){
+    for(const p of MVA_PNEUMATICOS){if(cest===p.cest) return p.mva;}
+    for(const p of MVA_PNEUMATICOS){if(ncm.startsWith(p.ncm.replace(/\./g,''))) return p.mva;}
   }
-  // Fallback: match por prefixo NCM dentro do segmento 16
-  for(const p of MVA_PNEUMATICOS){
-    if(ncm.startsWith(p.ncm.replace(/\./g,''))) return p.mva;
-  }
-  return PA_MVA_ORIG; // CEST 16 não mapeado → padrão
+  return MVA_AUTOPECAS;
 }
 
 const PA_UF_EXCL=new Set();
@@ -1224,19 +1344,20 @@ function getAliqIntraMA(dataStr){
 }
 
 function getMVAAjustada(aliqInter,aliqIntra,mvaOrig){
-  const mva=mvaOrig!==undefined?mvaOrig:PA_MVA_ORIG;
+  const mva=mvaOrig!==undefined?mvaOrig:MVA_AUTOPECAS;
   return ((1+mva)*(1-aliqInter)/(1-aliqIntra))-1;
 }
 
 function isCESTAutopecas(cest){
   if(!cest) return false;
   const c=cest.replace(/\./g,'');
-  return c.startsWith('01')||c.startsWith('16');
+  return c.startsWith('01')||c.startsWith('06')||c.startsWith('16')||c.startsWith('28');
 }
 
 function isNCMAutopecas(ncm){
   if(!ncm) return false;
   const n=ncm.replace(/\./g,'');
+  if(isBateria(ncm)) return true;
   return NCM_AUTOPECAS.some(p=>n.startsWith(p));
 }
 
@@ -1319,7 +1440,53 @@ function executarPreAuditoria(){
     return true;
   });
 
-  if(!itensQualif.length){
+  // === CLASSIFICACAO EM SEGMENTOS ===
+  const itensCalculo=[];
+  const itensObs=[];
+  const itensLubri=[];
+  let descartados=0;
+
+  itensQualif.forEach(item=>{
+    const nota=notaMap.get(item.chave);
+    const cls=classificarSegmento(item,nota.data,nota.ufEmissao);
+
+    if(cls.seg==='descartado'){descartados++;return;}
+
+    if(cls.seg==='observacao'){
+      itensObs.push({
+        chave:item.chave,numero:item.numero||nota.numero,serie:nota.serie,
+        data:nota.data,ufEmit:nota.ufEmissao,emitNome:nota.emitNome,emitCNPJ:nota.emitCNPJ,
+        xProd:item.xProd,NCM:item.NCM,CEST:item.CEST,CFOP:(item.CFOP||'').trim(),
+        vProd:item.vProd||0,bcST:item.bcST||0,icmsST:item.icmsST||0,
+        motivo:cls.motivo,tag:cls.tag||'📦'
+      });
+      return;
+    }
+
+    if(cls.seg==='lubrificante'){
+      // Lubrificante: nao recalcula, verifica se tem ST retida
+      const temST=(item.icmsST||0)>0||(item.bcST||0)>0;
+      itensObs.push({
+        chave:item.chave,numero:item.numero||nota.numero,serie:nota.serie,
+        data:nota.data,ufEmit:nota.ufEmissao,emitNome:nota.emitNome,emitCNPJ:nota.emitCNPJ,
+        xProd:item.xProd,NCM:item.NCM,CEST:item.CEST,CFOP:(item.CFOP||'').trim(),
+        vProd:item.vProd||0,bcST:item.bcST||0,icmsST:item.icmsST||0,
+        motivo:temST?'Lubrificante (CEST 06) - ST retida R$ '+(item.icmsST||0).toFixed(2)+' - Conv. 110/07':'Lubrificante (CEST 06) SEM ST retida - verificar Conv. 110/07',
+        tag:'🛢️',
+        isLubriSemST:!temST
+      });
+      return;
+    }
+
+    // Segmentos com calculo (autopeca, bateria, pneumatico)
+    item._segmento=cls;
+    itensCalculo.push(item);
+  });
+
+  paObservacoes=itensObs;
+  paDescartados=descartados;
+
+  if(!itensCalculo.length&&!itensObs.length){
     {const _e=document.getElementById('pa-summary');if(_e)_e.style.display='none';}
     {const _e=document.getElementById('pa-actions');if(_e)_e.style.display='none';}
     {const _e=document.getElementById('pa-tab-bar');if(_e)_e.style.display='none';}
@@ -1337,7 +1504,7 @@ function executarPreAuditoria(){
     vProdPorNFe.set(item.chave, cur+(item.vProd||0));
   });
 
-  itensQualif.forEach(item=>{
+  itensCalculo.forEach(item=>{
     const nota=notaMap.get(item.chave);
     const crt=nota.emitCRT||'';
     const isSimples=crt.includes('Simples')||crt==='1'||(nota.vICMS===0 && nota.vBC===0);
@@ -1436,6 +1603,9 @@ function executarPreAuditoria(){
     const _cfop=(item.CFOP||'').trim();
     const isDevolucao=_finNFe.includes('devolu')||['1411','2411','5411','6411','1414','2414','5414','6414'].includes(_cfop);
 
+    // Alerta de CEST forçado (NCM/descrição prioridade sobre exclusão)
+    if(item._segmento?.alertaForcado) alertas.push('🔍 '+item._segmento.alertaForcado);
+
     paResultados.push({
       chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
       data:nota.data, ufEmit:nota.ufEmissao,
@@ -1454,6 +1624,10 @@ function executarPreAuditoria(){
       status, diferenca, alertas, isDevolucao,
       matchCEST:_matchCEST,
       matchNCM:_matchNCM,
+      segTag:item._segmento?.tag||'🔧',
+      segNome:item._segmento?.seg||'autopeca',
+      segBase:item._segmento?.base||'',
+      forcado:item._segmento?.forcado||false,
     });
   });
 
@@ -1478,12 +1652,22 @@ function executarPreAuditoria(){
   const totSemPA=semRetencao.reduce((s,r)=>s+(+r.icmsSTCorreto||0),0);
   const totDifPA=divergentes.filter(r=>r.diferenca>0).reduce((s,r)=>s+(+r.diferenca||0),0);
 
+  // Count by segment
+  const segCount={autopeca:0,bateria:0,pneumatico:0};
+  paResultados.forEach(r=>{const s=r.segNome||'autopeca';segCount[s]=(segCount[s]||0)+1;});
+
   // Rebuild summary HTML para autopeças
   const sumDiv=document.getElementById('pa-summary');
   if(sumDiv)sumDiv.innerHTML=`
     <div class="cards-grid" style="grid-template-columns:1fr 1fr">
      <div class="card"><div class="card-head"><div class="card-icon blue">📊</div>Itens analisados</div>
-      <div style="display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:8px;margin:8px 0 12px">
+      <div style="display:flex;gap:6px;margin:6px 0 8px;flex-wrap:wrap">
+       ${segCount.autopeca?'<span style="font-size:10px;padding:2px 8px;background:#dbeafe;color:#1e40af;border-radius:10px;font-weight:600">🔧 '+segCount.autopeca+' peças</span>':''}
+       ${segCount.bateria?'<span style="font-size:10px;padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:10px;font-weight:600">🔋 '+segCount.bateria+' baterias</span>':''}
+       ${segCount.pneumatico?'<span style="font-size:10px;padding:2px 8px;background:#f0fdf4;color:#166534;border-radius:10px;font-weight:600">🛞 '+segCount.pneumatico+' pneus</span>':''}
+       ${paObservacoes.length?'<span style="font-size:10px;padding:2px 8px;background:#f1f5f9;color:#64748b;border-radius:10px;font-weight:600">📋 '+paObservacoes.length+' fora do cálculo</span>':''}
+      </div>
+      <div style="display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:8px;margin:4px 0 12px">
        <button onclick="paTabAtual='todos';renderPATable()" style="flex:1;padding:8px 6px;border:none;background:${paTabAtual!=='sem'&&paTabAtual!=='diverg'&&paTabAtual!=='ok'?'#1e3a8a;color:#fff':'transparent;color:#475569'};border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Todos ${paResultados.length}</button>
        <button onclick="paTabAtual='sem';renderPATable()" style="flex:1;padding:8px 6px;border:none;background:${paTabAtual==='sem'?'#1e3a8a;color:#fff':'transparent;color:#b91c1c'};border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⚠ Sem ret ${semRetencao.length}</button>
        <button onclick="paTabAtual='diverg';renderPATable()" style="flex:1;padding:8px 6px;border:none;background:${paTabAtual==='diverg'?'#1e3a8a;color:#fff':'transparent;color:#92400e'};border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⚠ Diverg ${divergentes.length}</button>
@@ -1550,7 +1734,7 @@ function renderPATable(){
     b.style.color=active?'#fff':'';
   });}
 
-  let h=`<table class="ap-tbl"><thead><tr><th style="width:30px"></th><th>Status</th><th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Reg</th><th>Descrição</th><th class="right">MVA</th><th class="right">ST Devido / Dif</th></tr></thead><tbody>`;
+  let h=`<table class="ap-tbl"><thead><tr><th style="width:30px"></th><th>Status</th><th>Seg</th><th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Reg</th><th>Descrição</th><th class="right">MVA</th><th class="right">ST Devido / Dif</th></tr></thead><tbody>`;
   dados.forEach((r,i)=>{
     const stCls=r.status==='sem'?'sem':r.status==='diverg'?'div':'ok';
     const stTxt=r.status==='sem'?'⚠ SEM':r.status==='diverg'?'⚠ DIV':'✓ OK';
@@ -1558,9 +1742,11 @@ function renderPATable(){
     const valor=r.status==='sem'?('R$ '+fmt(r.icmsSTCorreto)):((r.diferenca>0?'+':'')+'R$ '+fmt(r.diferenca));
     const mvaCmp=r.mvaUsada!=null?'<span style="color:#b91c1c;font-size:10px">'+pct(r.mvaUsada)+'</span> <span style="font-weight:700">'+pct(r.mvaCorreta)+'</span>':pct(r.mvaCorreta);
     const valColor=r.status==='sem'?'#b91c1c':r.diferenca>0.5?'#b91c1c':'#94a3b8';
-    h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
-    h+=`<tr id="pad-${i}" style="display:none;background:#f8fafc;border-left:3px solid #1e40af"><td colspan="10" style="padding:6px 0">
-     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Identificação</h5><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b></div></div>
+    const segLabel=r.segNome==='bateria'?'🔋 Bat':r.segNome==='pneumatico'?'🛞 Pneu':'🔧 Peça';
+    const segCell=r.forcado?'<span title="CEST excluído pelo Prot. 95/22 — incluído manualmente no cálculo" style="background:#fef3c7;padding:1px 4px;border-radius:3px">⊕ '+segLabel+'</span>':segLabel;
+    h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td style="font-size:10px;white-space:nowrap">${segCell}</td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
+    h+=`<tr id="pad-${i}" style="display:none;background:#f8fafc;border-left:3px solid #1e40af"><td colspan="11" style="padding:6px 0">
+     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Identificação</h5><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · ${r.segTag||'🔧'} <b>${r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça'}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${r.segBase?' · <span style="color:#64748b;font-size:11px">'+r.segBase+'</span>':''}</div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 8px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Comparação Declarado × Correto</h5><table style="max-width:480px;font-size:13px;font-variant-numeric:tabular-nums;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:5px 16px 5px 0;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0"></th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Declarado</th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Correto</th><th style="text-align:right;padding:5px 0 5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Diferença</th></tr></thead><tbody>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">BC-ST</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTDeclarado)}</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
@@ -1590,7 +1776,7 @@ async function exportarPA(){
 
   // Aba 1: Sem Retenção
   const semR=paResultados.filter(r=>r.status==='sem');
-  {const hd=['Período','NF-e','Série','Chave','UF','CNPJ Emitente','Emitente','CRT','Regime',
+  {const hd=['Segmento','Período','NF-e','Série','Chave','UF','CNPJ Emitente','Emitente','CRT','Regime',
     'Item','Cód.Produto','Descrição','NCM','CEST','CFOP','Devolução',
     'Vl.Produto','Desc.Inc.','IPI Item','Frete Rat.','Seguro Rat.','Outros Rat.','Base Pré-MVA',
     'ALQ Inter','ALQ Intra','MVA Correta','BC-ST Calculada','ICMS Próprio','ICMS-ST Devido',
@@ -1600,10 +1786,11 @@ async function exportarPA(){
   xlSubtitle(ws,semR.length+' item(ns) · Gerado em '+hoje,hd.length,2);
   ws.getRow(3).height=4;
   xlHeaderRow(ws,hd,4);
-  const moneyCols1=new Set([17,18,19,20,21,22,23,27,28,29]);
-  const pctCols1=new Set([24,25,26]);
+  const moneyCols1=new Set([18,19,20,21,22,23,24,28,29,30]);
+  const pctCols1=new Set([25,26,27]);
   semR.forEach((r,i)=>{
-    const row=[r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT,r.regime,
+    const segLbl=(r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça')+(r.forcado?' (incl. manual)':'');
+    const row=[segLbl,r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT,r.regime,
       r.nitem,r.cProd,r.xProd,r.NCM,r.CEST,r.CFOP,r.isDevolucao?'Sim':'Não',
       r2(r.vProd),r2(r.vDescItem||0),r2(r.ipiItem),r2(r.freteRat),r2(r.seguroRat),r2(r.outrosRat),r2(r.basePreMVA),
       r2(r.aliqInter),r2(r.aliqIntra),r2(r.mvaCorreta),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
@@ -1613,15 +1800,15 @@ async function exportarPA(){
     xlDataRow(ws,row,rn,z);
     moneyCols1.forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
     pctCols1.forEach(c=>{xlPctCell(ws.getCell(rn,c));});
-    xlDivCell(ws.getCell(rn,28),r.icmsSTCorreto);
+    xlDivCell(ws.getCell(rn,29),r.icmsSTCorreto);
   });
-  if(semR.length)xlTotalRow(ws,[17,18,19,20,21,22,26,27,28],5+semR.length,5,4+semR.length);
-  xlAutoWidth(ws,[10,8,6,48,5,16,30,16,8,6,12,35,10,10,6,8,16,14,14,14,14,16,10,10,10,16,16,16,8,8,40]);
+  if(semR.length)xlTotalRow(ws,[18,19,20,21,22,23,27,28,29],5+semR.length,5,4+semR.length);
+  xlAutoWidth(ws,[10,10,8,6,48,5,16,30,16,8,6,12,35,10,10,6,8,16,14,14,14,14,16,10,10,10,16,16,16,8,8,40]);
   if(semR.length) ws.autoFilter={from:{row:4,column:1},to:{row:4+semR.length,column:hd.length}};}
 
   // Aba 2: Verificação ST
   const comR=paResultados.filter(r=>r.status!=='sem');
-  {const hd=['Período','NF-e','Chave','UF','Emitente','Regime','Status','Devolução',
+  {const hd=['Segmento','Período','NF-e','Chave','UF','Emitente','Regime','Status','Devolução',
     'Item','Descrição','NCM','CEST','CFOP','Vl.Produto','BC-ST Declarada','ST Declarado',
     'MVA Usada','MVA Correta','BC-ST Correta','ST Correto','Diferença','Alertas'];
   const ws=wb.addWorksheet('Verificação ST',{views:[{state:'frozen',ySplit:4}]});
@@ -1631,7 +1818,8 @@ async function exportarPA(){
   xlHeaderRow(ws,hd,4);
   comR.forEach((r,i)=>{
     const isOk=r.status==='ok';
-    const row=[r.data,r.numero,r.chave,r.ufEmit,r.emitNome,r.regime,
+    const segLbl=(r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça')+(r.forcado?' (incl. manual)':'');
+    const row=[segLbl,r.data,r.numero,r.chave,r.ufEmit,r.emitNome,r.regime,
       isOk?'✓ OK':'⚠ DIVERGENTE',r.isDevolucao?'Sim':'Não',
       r.nitem,r.xProd,r.NCM,r.CEST,r.CFOP,
       r2(r.vProd),r2(r.bcSTDeclarado),r2(r.stDeclarado),
@@ -1640,12 +1828,12 @@ async function exportarPA(){
       (r.alertas||[]).join(' | ')];
     const rn=5+i;const z=i%2===1;
     xlDataRow(ws,row,rn,z);
-    xlStatusCell(ws.getCell(rn,7),isOk);
-    [14,15,16,19,20].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
-    [17,18].forEach(c=>{xlPctCell(ws.getCell(rn,c));});
-    xlDivCell(ws.getCell(rn,21),r.diferenca);
+    xlStatusCell(ws.getCell(rn,8),isOk);
+    [15,16,17,20,21].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+    [18,19].forEach(c=>{xlPctCell(ws.getCell(rn,c));});
+    xlDivCell(ws.getCell(rn,22),r.diferenca);
   });
-  xlAutoWidth(ws,[10,8,48,5,30,8,14,8,6,35,10,10,6,16,16,16,10,10,16,16,16,40]);
+  xlAutoWidth(ws,[10,10,8,48,5,30,8,14,8,6,35,10,10,6,16,16,16,10,10,16,16,16,40]);
   if(comR.length) ws.autoFilter={from:{row:4,column:1},to:{row:4+comR.length,column:hd.length}};}
 
   // Aba 3: Resumo UF/Ano (excluindo devoluções)
@@ -3010,6 +3198,48 @@ function renderMon(){
       h+='<span class="pg-info">'+dados.length+' item(ns) · página '+monPagina+' de '+totalPag+'</span>';
       h+='</div>';
     }
+
+    // ═══ SEÇÃO: Fora do cálculo (Camada 2) ═══
+    if(!isCel && paObservacoes.length>0){
+      const obsGrp={};
+      paObservacoes.forEach(o=>{
+        if(!obsGrp[o.motivo])obsGrp[o.motivo]={itens:[],vlTotal:0,stTotal:0};
+        obsGrp[o.motivo].itens.push(o);
+        obsGrp[o.motivo].vlTotal+=o.vProd;
+        obsGrp[o.motivo].stTotal+=o.icmsST||0;
+      });
+      h+='<div style="margin-top:24px">';
+      h+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span.arr\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:10px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:8px">';
+      h+='<span class="arr" style="font-size:10px;color:var(--text-3)">▶</span>';
+      h+='<span style="font-size:12px;font-weight:700;color:var(--text-2)">📋 Fora do cálculo — '+paObservacoes.length+' item(ns)</span>';
+      const lubriSemST=paObservacoes.filter(o=>o.isLubriSemST).length;
+      if(lubriSemST>0) h+='<span style="font-size:10px;color:#b91c1c;font-weight:700;margin-left:8px;background:#fef2f2;padding:2px 8px;border-radius:8px">⚠ '+lubriSemST+' lubrif. sem ST</span>';
+      const excluidos95=paObservacoes.filter(o=>(o.motivo||'').includes('Prot. 95/22')).length;
+      if(excluidos95>0&&!paIncluirExcluidos) h+='<button onclick="event.stopPropagation();paIncluirExcluidos=true;executarPreAuditoria()" style="margin-left:auto;font-size:10px;padding:3px 10px;background:#1e40af;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600" title="Recalcular incluindo os '+excluidos95+' itens com CESTs excluídos pelo Prot. 95/22 como autopeças (MVA 71,78%)">⊕ Incluir '+excluidos95+' excluídos no cálculo</button>';
+      if(paIncluirExcluidos) h+='<button onclick="event.stopPropagation();paIncluirExcluidos=false;executarPreAuditoria()" style="margin-left:auto;font-size:10px;padding:3px 10px;background:#b91c1c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">✕ Remover excluídos do cálculo</button>';
+      if(paDescartados>0) h+='<span style="font-size:11px;color:var(--text-3);margin-left:8px">· '+paDescartados+' descartado(s)</span>';
+      h+='</div>';
+      h+='<div style="display:none;padding:12px 16px;background:#fff;border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px">';
+      
+      Object.entries(obsGrp).forEach(([motivo,g])=>{
+        const ico=motivo.includes('Bonificação')?'🎁':motivo.includes('Amostra')?'🧪':motivo.includes('Transferência')?'🔄':motivo.includes('Lubrificante')?'🛢️':motivo.includes('automotivo')?'🔧':'📦';
+        h+='<div style="margin-bottom:12px">';
+        h+='<div style="font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:6px">'+ico+' '+motivo+' — '+g.itens.length+' item(ns) · R$ '+fmt(g.vlTotal);
+        if(g.stTotal>0) h+=' · ST retida: R$ '+fmt(g.stTotal);
+        h+='</div>';
+        h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fafbfc;border-radius:6px;overflow:hidden">';
+        h+='<thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">NF</th><th style="padding:4px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">Emitente</th><th style="padding:4px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">Produto</th><th style="padding:4px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">NCM</th><th style="padding:4px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">CEST</th><th style="padding:4px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">Valor</th><th style="padding:4px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">ST</th></tr></thead><tbody>';
+        g.itens.forEach((o,j)=>{
+          const isAlert=o.isLubriSemST;
+          h+='<tr style="border-top:1px solid #e2e8f0;'+(isAlert?'background:#fef2f2;':j%2?'background:#f8fafc':'')+'"><td style="padding:3px 8px;font-family:monospace">'+o.numero+'</td><td style="padding:3px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis">'+o.emitNome+'</td><td style="padding:3px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis">'+o.xProd+'</td><td style="padding:3px 8px;font-family:monospace">'+o.NCM+'</td><td style="padding:3px 8px;font-family:monospace">'+(o.CEST||'—')+'</td><td style="padding:3px 8px;text-align:right;font-family:monospace">R$ '+fmt(o.vProd)+'</td><td style="padding:3px 8px;text-align:right;font-family:monospace;'+(isAlert?'color:#b91c1c;font-weight:700':'')+'\">'+(o.icmsST>0?'R$ '+fmt(o.icmsST):(isAlert?'⚠ SEM ST':'—'))+'</td></tr>';
+        });
+        h+='</tbody></table></div>';
+      });
+      
+      h+='<div style="font-size:10px;color:var(--text-3);margin-top:8px;padding:6px 8px;background:#f8fafc;border-radius:4px">Estes itens foram identificados nos XMLs mas não são calculados pelo módulo de autopeças. Verifique manualmente se necessário.</div>';
+      h+='</div></div>';
+    }
+
     c.innerHTML=h;
     return;
   }

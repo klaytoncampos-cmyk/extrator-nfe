@@ -629,7 +629,8 @@ function monExecutar(){
 function monLimpar(){
   // Limpa dados mas mantém o módulo selecionado
   todasNotas=[];todosItens=[];
-  paVeicResultados=[];paResultados=[];paObservacoes=[];paLubrificantes=[];paDescartados=0;paIncluirExcluidos=false;
+  paVeicResultados=[];paResultados=[];paObservacoes=[];paLubrificantes=[];paDifal=[];paTransferencias=[];paDescartados=0;paIncluirExcluidos=false;
+  INV_STATE.active=false;INV_STATE.cnpj='';INV_STATE.efdFiles=[];INV_STATE.efdData=null;INV_STATE.consolidated=null;
   document.getElementById('kpi-notas').textContent='0';
   document.getElementById('kpi-itens').textContent='0';
   const mr=document.getElementById('mon-results');if(mr)mr.innerHTML='';
@@ -757,12 +758,16 @@ function parseNFe(xmlStr){
     destDoc:dest?(txt(dest,'CNPJ')||txt(dest,'CPF')):'',destNome:dest?txt(dest,'xNome'):'',
     destUF:enderDest?txt(enderDest,'UF'):'',destIE:dest?txt(dest,'IE'):'',
     destIndIE:indIEMap[dest?txt(dest,'indIEDest'):'']||'',
+    destIndIERaw:dest?txt(dest,'indIEDest'):'',
+    indFinal:txt(ide,'indFinal'),
+    idDest:txt(ide,'idDest'),
     destMun:enderDest?txt(enderDest,'xMun'):'',destCEP:enderDest?txt(enderDest,'CEP'):'',
     destFone:enderDest?txt(enderDest,'fone'):'',destEmail:dest?txt(dest,'email'):'',
     vNF:num(tot,'vNF'),vDesc:num(tot,'vDesc'),vFrete:num(tot,'vFrete'),
     vSeg:num(tot,'vSeg'),vOutro:num(tot,'vOutro'),vTotTrib:num(tot,'vTotTrib'),
     vBC:num(tot,'vBC'),vICMS:num(tot,'vICMS'),vBCST:num(tot,'vBCST'),vST:num(tot,'vST'),
     vFCP:num(tot,'vFCP'),vFCPST:num(tot,'vFCPST'),vFCPSTRet:num(tot,'vFCPSTRet'),
+    vICMSUFDest:num(tot,'vICMSUFDest'),vICMSUFRemet:num(tot,'vICMSUFRemet'),
     vIPI:num(tot,'vIPI'),vPIS:num(tot,'vPIS'),vCOFINS:num(tot,'vCOFINS'),
     transpMod:modFreteMap[transpMod]||transpMod,
     transpNome:transp?(txt(transp,'xNome')||txt(transp,'xNomeTransp')):'',
@@ -1162,9 +1167,14 @@ async function exportar(){
 let paResultados=[];
 let paObservacoes=[];
 let paLubrificantes=[]; // Resultados de cálculo de lubrificantes (não soma ao total)
+let paDifal=[]; // Itens de venda a consumidor final (DIFAL, não ST)
+let paTransferencias=[]; // Itens de transferência entre filiais (ST referência)
 let paDescartados=0;
 let paTabAtual='sem';
-let paIncluirExcluidos=false; // Toggle: incluir CESTs excluídos pelo Prot. 95/22 no cálculo
+let paIncluirExcluidos=false;
+
+// Estado de investigação de filial
+const INV_STATE={active:false,cnpj:'',nome:'',efdFiles:[],efdData:null,consolidated:null,resultado:null};
 
 /* === SEGMENTOS AUTOMOTIVOS - MVAs e classificacao === */
 const MVA_AUTOPECAS=0.7178; // Anexo 4.41 RICMS/MA - Prot. 41/08
@@ -1217,6 +1227,18 @@ function isBateria(ncm){
   return n.startsWith('8506')||n.startsWith('850730')||n.startsWith('850780');
 }
 
+// Classificar segmento sem verificar CFOP (para transferências — saber a MVA do produto)
+function classificarSegmentoSemCFOP(item,dataStr,ufEmit){
+  const cest=(item.CEST||'').replace(/\./g,'');
+  const ncm=(item.NCM||'').replace(/\./g,'');
+  if(isBateria(ncm)||cest==='0105800') return {seg:'bateria',tag:'🔋',mva:MVA_BATERIAS,base:'Anexo 4.15 - Prot. 18/85'};
+  if(cest.startsWith('16')){
+    for(const p of MVA_PNEUMATICOS){if(cest===p.cest.replace(/\./g,'')){return {seg:'pneumatico',tag:'🛞',mva:p.mva,base:'Anexo 4.16 - Conv. 102/17'};}}
+    return {seg:'pneumatico',tag:'🛞',mva:0.45,base:'Anexo 4.16 - Conv. 102/17'};
+  }
+  return {seg:'autopeca',tag:'🔧',mva:MVA_AUTOPECAS,base:'Anexo 4.41 - Prot. 41/08'};
+}
+
 // Classificar item em segmento automotivo
 function classificarSegmento(item,dataStr,ufEmit){
   const cest=(item.CEST||'').replace(/\./g,'');
@@ -1238,6 +1260,9 @@ function classificarSegmento(item,dataStr,ufEmit){
   if(cfop==='6915') return {seg:'observacao',motivo:'Retorno de exposição (CFOP 6915)',tag:'🔄'};
   if(cfop==='6916') return {seg:'observacao',motivo:'Retorno de industrialização (CFOP 6916)',tag:'🔄'};
   if(cfop==='6949') return {seg:'observacao',motivo:'Outra saída não especificada (CFOP 6949) — verificar manualmente',tag:'📋'};
+
+  // Transferências entre filiais (CFOP 6151/6152) — calcular ST como referência
+  if(cfop==='6151'||cfop==='6152') return {seg:'transferencia',tag:'🔄',motivo:'Transferência entre filiais (CFOP '+cfop+') — Conv. 142/18 cl. 9ª, II'};
 
   // Lubrificantes (CEST 06.xxx) - Anexo 4.11 - Conv. 110/07
   if(cest.startsWith('06')){
@@ -1450,6 +1475,7 @@ function executarPreAuditoria(){
     const nota=notaMap.get(item.chave);
     if(!nota) return false;
     if(nota.ufEmissao==='MA') return false;
+    if(nota.destUF!=='MA') return false;
     if(PA_UF_EXCL.has(nota.ufEmissao)) return false;
     if(filtroTodosCEST){
       if(!item.CEST || item.CEST.trim()==='') return false;
@@ -1466,13 +1492,92 @@ function executarPreAuditoria(){
   const itensCalculo=[];
   const itensObs=[];
   const itensLubri=[];
+  const itensDifal=[];
+  const itensTransf=[];
   let descartados=0;
+
+  // Pré-calcular vProd total por NF-e (para rateio e proporção DIFAL)
+  const vProdPorNFe=new Map();
+  todosItens.forEach(item=>{
+    const cur=vProdPorNFe.get(item.chave)||0;
+    vProdPorNFe.set(item.chave, cur+(item.vProd||0));
+  });
 
   itensQualif.forEach(item=>{
     const nota=notaMap.get(item.chave);
+
+    // === DIFAL: Venda a consumidor final não contribuinte ===
+    // indFinal=1 + indIEDest=9 → DIFAL, não ST
+    const isConsumidorFinal=(nota.indFinal==='1'&&nota.destIndIERaw==='9');
+    if(isConsumidorFinal){
+      const aliqIntra=getAliqIntraMA(nota.data);
+      const aliqInter=getAliqInter(nota.ufEmissao,item.orig);
+      const vProdItem=item.vProd||0;
+      // BC DIFAL: valor da operação com ICMS embutido (vNF proporcional ao item)
+      const vProdTotalNFe=vProdPorNFe.get(item.chave)||1;
+      const proporcao=vProdItem/vProdTotalNFe;
+      const bcDifal=(nota.vNF||0)*proporcao;
+      const difalCorreto=Math.max(0,bcDifal*(aliqIntra-aliqInter));
+      // DIFAL declarado (proporcional)
+      const difalDeclarado=(nota.vICMSUFDest||0)*proporcao;
+      const diferenca=difalCorreto-difalDeclarado;
+      let statusDifal='ok';
+      if(difalDeclarado===0&&difalCorreto>1) statusDifal='sem';
+      else if(Math.abs(diferenca)>1) statusDifal='diverg';
+
+      itensDifal.push({
+        chave:item.chave,numero:item.numero||nota.numero,serie:nota.serie,
+        data:nota.data,ufEmit:nota.ufEmissao,emitNome:nota.emitNome,emitCNPJ:nota.emitCNPJ,
+        destNome:nota.destNome||'',destDoc:nota.destDoc||'',
+        xProd:item.xProd,NCM:item.NCM,CEST:item.CEST,CFOP:(item.CFOP||'').trim(),nitem:item.nitem,
+        vProd:vProdItem,orig:item.orig,
+        aliqInter,aliqIntra,bcDifal,difalCorreto,difalDeclarado,diferenca,
+        status:statusDifal,
+        segTag:classificarSegmento(item,nota.data,nota.ufEmissao).tag||'🔧'
+      });
+      return; // Não entra no cálculo de ST
+    }
+
     const cls=classificarSegmento(item,nota.data,nota.ufEmissao);
 
     if(cls.seg==='descartado'){descartados++;return;}
+
+    if(cls.seg==='transferencia'){
+      // Transferência: calcular ST como referência (não soma ao total)
+      const aliqIntra=getAliqIntraMA(nota.data);
+      const aliqInter=getAliqInter(nota.ufEmissao,item.orig);
+      const isSimples=(nota.emitCRT||'')==='1'||(nota.emitCRT||'').includes('Simples');
+      const vDescItem=parseFloat(item.vDesc||0);
+      const vProdItem=item.vProd||0;
+      const ipiItem=parseFloat(item.vIPI||0);
+      const proporcao=vProdItem/(vProdPorNFe.get(item.chave)||1);
+      const freteRat=(nota.vFrete||0)*proporcao;
+      const seguroRat=(nota.vSeg||0)*proporcao;
+      const outrosRat=(nota.vOutro||0)*proporcao;
+      const basePreMVA=Math.max(0,(vProdItem-vDescItem)+ipiItem+freteRat+seguroRat+outrosRat);
+      // Usar MVA do segmento real (autopeça/pneumático/bateria)
+      const segReal=classificarSegmentoSemCFOP(item,nota.data,nota.ufEmissao);
+      const mvaOrig=segReal.mva||MVA_AUTOPECAS;
+      const mvaCorreta=isSimples?mvaOrig:getMVAAjustada(aliqInter,aliqIntra,mvaOrig);
+      const bcSTRef=basePreMVA*(1+mvaCorreta);
+      const icmsProprioRef=isSimples?0:(basePreMVA*aliqInter);
+      const icmsSTRef=Math.max(0,bcSTRef*aliqIntra-icmsProprioRef);
+      const segNome=segReal.seg==='bateria'?'Bateria':segReal.seg==='pneumatico'?'Pneumático':'Autopeça';
+
+      itensTransf.push({
+        chave:item.chave,numero:item.numero||nota.numero,serie:nota.serie,
+        data:nota.data,ufEmit:nota.ufEmissao,emitNome:nota.emitNome,emitCNPJ:nota.emitCNPJ,
+        destNome:nota.destNome||'',destDoc:nota.destDoc||'',
+        xProd:item.xProd,NCM:item.NCM,CEST:item.CEST,CFOP:(item.CFOP||'').trim(),nitem:item.nitem,
+        vProd:vProdItem,vDescItem,basePreMVA,
+        regime:isSimples?'SN':'RN',
+        aliqInter,aliqIntra,mvaCorreta,bcSTRef,icmsSTRef,
+        segTag:segReal.tag||'🔧',segNome,segBase:segReal.base||'',
+        motivo:cls.motivo,stDeclarado:item.icmsST||0,
+        temST:(item.icmsST||0)>0||(item.bcST||0)>0
+      });
+      return;
+    }
 
     if(cls.seg==='observacao'){
       itensObs.push({
@@ -1559,9 +1664,11 @@ function executarPreAuditoria(){
 
   paObservacoes=itensObs;
   paLubrificantes=itensLubri;
+  paDifal=itensDifal;
+  paTransferencias=itensTransf;
   paDescartados=descartados;
 
-  if(!itensCalculo.length&&!itensObs.length&&!itensLubri.length){
+  if(!itensCalculo.length&&!itensObs.length&&!itensLubri.length&&!itensDifal.length&&!itensTransf.length){
     {const _e=document.getElementById('pa-summary');if(_e)_e.style.display='none';}
     {const _e=document.getElementById('pa-actions');if(_e)_e.style.display='none';}
     {const _e=document.getElementById('pa-tab-bar');if(_e)_e.style.display='none';}
@@ -1571,13 +1678,6 @@ function executarPreAuditoria(){
   }
 
   paResultados=[];
-
-  // Pré-calcular vProd total por NF-e (para rateio de frete/seguro/outros)
-  const vProdPorNFe=new Map();
-  todosItens.forEach(item=>{
-    const cur=vProdPorNFe.get(item.chave)||0;
-    vProdPorNFe.set(item.chave, cur+(item.vProd||0));
-  });
 
   itensCalculo.forEach(item=>{
     const nota=notaMap.get(item.chave);
@@ -1691,6 +1791,7 @@ function executarPreAuditoria(){
       chave:item.chave, numero:item.numero||nota.numero, serie:nota.serie,
       data:nota.data, ufEmit:nota.ufEmissao,
       emitNome:nota.emitNome, emitCNPJ:nota.emitCNPJ, emitCRT:crt,
+      destNome:nota.destNome||'', destDoc:nota.destDoc||'', destUF:nota.destUF||'',
       nitem:item.nitem, cProd:item.cProd, xProd:item.xProd,
       NCM:item.NCM, CEST:item.CEST, CFOP:item.CFOP, orig:item.orig||'',
       vProd:item.vProd||0, vDescItem, ipiItem:item.ipi||0,
@@ -1701,6 +1802,7 @@ function executarPreAuditoria(){
       aliqInter, aliqIntra,
       bcSTDeclarado, stDeclarado,
       mvaUsada,
+      mvaOriginal:mvaOrigItem,
       mvaCorreta, bcSTCorreta, icmsProprioCorreto, icmsSTCorreto,
       status, diferenca, alertas, isDevolucao,
       matchCEST:_matchCEST,
@@ -1747,6 +1849,8 @@ function executarPreAuditoria(){
        ${segCount.bateria?'<span style="font-size:10px;padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:10px;font-weight:600">🔋 '+segCount.bateria+' baterias</span>':''}
        ${segCount.pneumatico?'<span style="font-size:10px;padding:2px 8px;background:#f0fdf4;color:#166534;border-radius:10px;font-weight:600">🛞 '+segCount.pneumatico+' pneus</span>':''}
        ${paLubrificantes.length?'<span style="font-size:10px;padding:2px 8px;background:#fefce8;color:#854d0e;border-radius:10px;font-weight:600">🛢️ '+paLubrificantes.length+' lubrifican.</span>':''}
+       ${paDifal.length?'<span style="font-size:10px;padding:2px 8px;background:#ede9fe;color:#6d28d9;border-radius:10px;font-weight:600">🏷️ '+paDifal.length+' DIFAL (cons.final)</span>':''}
+       ${paTransferencias.length?'<span style="font-size:10px;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:10px;font-weight:600">🔄 '+paTransferencias.length+' transferências</span>':''}
        ${paObservacoes.length?'<span style="font-size:10px;padding:2px 8px;background:#f1f5f9;color:#64748b;border-radius:10px;font-weight:600">📋 '+paObservacoes.length+' fora do cálculo</span>':''}
       </div>
       <div style="display:flex;gap:4px;background:#f1f5f9;padding:4px;border-radius:8px;margin:4px 0 12px">
@@ -1829,10 +1933,11 @@ function renderPATable(){
     h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td style="font-size:10px;white-space:nowrap">${segCell}</td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
     h+=`<tr id="pad-${i}" style="display:none;background:#f8fafc;border-left:3px solid #1e40af"><td colspan="11" style="padding:6px 0">
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Identificação</h5><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · ${r.segTag||'🔧'} <b>${r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça'}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${r.segBase?' · <span style="color:#64748b;font-size:11px">'+r.segBase+'</span>':''}</div></div>
-     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
+     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA orig. <b>${pct(r.mvaOriginal)}</b>${r.regime!=='SN'?' → ajustada <b>'+pct(r.mvaCorreta)+'</b>':' (SN, sem ajuste)'} → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 8px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Comparação Declarado × Correto</h5><table style="max-width:480px;font-size:13px;font-variant-numeric:tabular-nums;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:5px 16px 5px 0;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0"></th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Declarado</th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Correto</th><th style="text-align:right;padding:5px 0 5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Diferença</th></tr></thead><tbody>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">BC-ST</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTDeclarado)}</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
-      <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">MVA</td><td style="text-align:right;padding:6px 16px">${r.mvaUsada!=null?pct(r.mvaUsada):'—'}</td><td style="text-align:right;padding:6px 16px">${pct(r.mvaCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
+      <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">MVA original</td><td style="text-align:right;padding:6px 16px;color:#94a3b8">—</td><td style="text-align:right;padding:6px 16px;font-weight:700">${pct(r.mvaOriginal)}</td><td style="text-align:right;padding:6px 16px;font-size:10px;color:#64748b">${r.segNome==='pneumatico'?'Conv. 102/17':r.segNome==='bateria'?'Prot. 18/85':'Prot. 41/08'}</td></tr>
+      <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">MVA ajustada</td><td style="text-align:right;padding:6px 16px">${r.mvaUsada!=null?pct(r.mvaUsada):'—'}</td><td style="text-align:right;padding:6px 16px">${pct(r.mvaCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">ICMS-ST</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.stDeclarado)}</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.icmsSTCorreto)}</td><td style="text-align:right;padding:6px 0 6px 16px;color:${r.diferenca>0.5?'#b91c1c':r.diferenca<-0.5?'#92400e':'#166534'};font-weight:700">${r.diferenca>0?'+':''}R$ ${fmt(r.diferenca)}</td></tr>
      </tbody></table></div>
     ${r.alertas&&r.alertas.length?'<div style="background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:8px 14px;margin:8px 12px;font-size:12px;color:#92400e">'+r.alertas.join('<br>')+'</div>':''}
@@ -1858,7 +1963,9 @@ async function exportarPA(){
 
   // Aba 1: Sem Retenção
   const semR=paResultados.filter(r=>r.status==='sem');
-  {const hd=['Segmento','Período','NF-e','Série','Chave','UF','CNPJ Emitente','Emitente','CRT','Regime',
+  {const hd=['Segmento','Período','NF-e','Série','Chave','UF Orig','CNPJ Emitente','Emitente',
+    'CNPJ/CPF Dest.','Destinatário','UF Dest.',
+    'CRT','Regime',
     'Item','Cód.Produto','Descrição','NCM','CEST','CFOP','Devolução',
     'Vl.Produto','Desc.Inc.','IPI Item','Frete Rat.','Seguro Rat.','Outros Rat.','Base Pré-MVA',
     'ALQ Inter','ALQ Intra','MVA Correta','BC-ST Calculada','ICMS Próprio','ICMS-ST Devido',
@@ -1868,11 +1975,13 @@ async function exportarPA(){
   xlSubtitle(ws,semR.length+' item(ns) · Gerado em '+hoje,hd.length,2);
   ws.getRow(3).height=4;
   xlHeaderRow(ws,hd,4);
-  const moneyCols1=new Set([18,19,20,21,22,23,24,28,29,30]);
-  const pctCols1=new Set([25,26,27]);
+  const moneyCols1=new Set([21,22,23,24,25,26,27,31,32,33]);
+  const pctCols1=new Set([28,29,30]);
   semR.forEach((r,i)=>{
     const segLbl=(r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça')+(r.forcado?' (incl. manual)':'');
-    const row=[segLbl,r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,r.emitCRT,r.regime,
+    const row=[segLbl,r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,
+      r.destDoc||'',r.destNome||'',r.destUF||'',
+      r.emitCRT,r.regime,
       r.nitem,r.cProd,r.xProd,r.NCM,r.CEST,r.CFOP,r.isDevolucao?'Sim':'Não',
       r2(r.vProd),r2(r.vDescItem||0),r2(r.ipiItem),r2(r.freteRat),r2(r.seguroRat),r2(r.outrosRat),r2(r.basePreMVA),
       r2(r.aliqInter),r2(r.aliqIntra),r2(r.mvaCorreta),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
@@ -1882,15 +1991,17 @@ async function exportarPA(){
     xlDataRow(ws,row,rn,z);
     moneyCols1.forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
     pctCols1.forEach(c=>{xlPctCell(ws.getCell(rn,c));});
-    xlDivCell(ws.getCell(rn,30),r.icmsSTCorreto);
+    xlDivCell(ws.getCell(rn,33),r.icmsSTCorreto);
   });
-  if(semR.length)xlTotalRow(ws,[18,19,20,21,22,23,24,28,29,30],5+semR.length,5,4+semR.length);
-  xlAutoWidth(ws,[10,10,8,6,48,5,16,30,16,8,6,12,35,10,10,6,8,16,14,14,14,14,16,10,10,10,16,16,16,8,8,40]);
+  if(semR.length)xlTotalRow(ws,[21,22,23,24,25,26,27,31,32,33],5+semR.length,5,4+semR.length);
+  xlAutoWidth(ws,[10,10,8,6,48,5,16,30,16,22,5,16,8,6,12,35,10,10,6,8,16,14,14,14,14,16,10,10,10,16,16,16,8,8,40]);
   if(semR.length) ws.autoFilter={from:{row:4,column:1},to:{row:4+semR.length,column:hd.length}};}
 
   // Aba 2: Verificação ST
   const comR=paResultados.filter(r=>r.status!=='sem');
-  {const hd=['Segmento','Período','NF-e','Chave','UF','Emitente','Regime','Status','Devolução',
+  {const hd=['Segmento','Período','NF-e','Chave','UF Orig','Emitente',
+    'CNPJ/CPF Dest.','Destinatário','UF Dest.',
+    'Regime','Status','Devolução',
     'Item','Descrição','NCM','CEST','CFOP','Vl.Produto','BC-ST Declarada','ST Declarado',
     'MVA Usada','MVA Correta','BC-ST Correta','ST Correto','Diferença','Alertas'];
   const ws=wb.addWorksheet('Verificação ST',{views:[{state:'frozen',ySplit:4}]});
@@ -1901,8 +2012,9 @@ async function exportarPA(){
   comR.forEach((r,i)=>{
     const isOk=r.status==='ok';
     const segLbl=(r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça')+(r.forcado?' (incl. manual)':'');
-    const row=[segLbl,r.data,r.numero,r.chave,r.ufEmit,r.emitNome,r.regime,
-      isOk?'✓ OK':'⚠ DIVERGENTE',r.isDevolucao?'Sim':'Não',
+    const row=[segLbl,r.data,r.numero,r.chave,r.ufEmit,r.emitNome,
+      r.destDoc||'',r.destNome||'',r.destUF||'',
+      r.regime,isOk?'✓ OK':'⚠ DIVERGENTE',r.isDevolucao?'Sim':'Não',
       r.nitem,r.xProd,r.NCM,r.CEST,r.CFOP,
       r2(r.vProd),r2(r.bcSTDeclarado),r2(r.stDeclarado),
       r.mvaUsada!==null?r2(r.mvaUsada):'',r2(r.mvaCorreta),
@@ -1910,13 +2022,13 @@ async function exportarPA(){
       (r.alertas||[]).join(' | ')];
     const rn=5+i;const z=i%2===1;
     xlDataRow(ws,row,rn,z);
-    xlStatusCell(ws.getCell(rn,8),isOk);
-    [15,16,17,20,21].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
-    [18,19].forEach(c=>{xlPctCell(ws.getCell(rn,c));});
-    xlDivCell(ws.getCell(rn,22),r.diferenca);
+    xlStatusCell(ws.getCell(rn,11),isOk);
+    [18,19,20,23,24].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+    [21,22].forEach(c=>{xlPctCell(ws.getCell(rn,c));});
+    xlDivCell(ws.getCell(rn,25),r.diferenca);
   });
-  if(comR.length)xlTotalRow(ws,[15,16,17,20,21,22],5+comR.length,5,4+comR.length);
-  xlAutoWidth(ws,[10,10,8,48,5,30,8,14,8,6,35,10,10,6,16,16,16,10,10,16,16,16,40]);
+  if(comR.length)xlTotalRow(ws,[18,19,20,23,24,25],5+comR.length,5,4+comR.length);
+  xlAutoWidth(ws,[10,10,8,48,5,30,16,22,5,8,14,8,6,35,10,10,6,16,16,16,10,10,16,16,16,40]);
   if(comR.length) ws.autoFilter={from:{row:4,column:1},to:{row:4+comR.length,column:hd.length}};}
 
   // Aba 3: Lubrificantes (conferência — não soma ao total)
@@ -1952,7 +2064,55 @@ async function exportarPA(){
     if(paLubrificantes.length) ws.autoFilter={from:{row:4,column:1},to:{row:4+paLubrificantes.length,column:hd.length}};
   }
 
-  // Aba 4: Resumo UF/Ano (excluindo devoluções)
+  // Aba DIFAL: Vendas a consumidor final
+  if(paDifal.length>0){
+    const hd=['Período','NF-e','Chave','UF','Emitente','Destinatário','Doc',
+      'Item','Descrição','NCM','CEST','CFOP','Vl.Produto','Orig',
+      'ALQ Inter','ALQ Intra','BC DIFAL','DIFAL Declarado','DIFAL Calculado','Diferença','Status'];
+    const ws=wb.addWorksheet('DIFAL Cons.Final',{views:[{state:'frozen',ySplit:4}]});
+    xlTitle(ws,'🏷️ DIFAL — VENDAS A CONSUMIDOR FINAL NÃO CONTRIBUINTE (EC 87/2015)',hd.length,1);
+    xlSubtitle(ws,paDifal.length+' item(ns) · NÃO sujeitos a ICMS-ST · Gerado em '+hoje,hd.length,2);
+    ws.getRow(3).height=4;
+    xlHeaderRow(ws,hd,4);
+    paDifal.forEach((r,i)=>{
+      const stLabel=r.status==='sem'?'⚠ SEM DIFAL':r.status==='diverg'?'⚠ DIVERGENTE':'✓ CONFERIDO';
+      const row=[r.data,r.numero,r.chave,r.ufEmit,r.emitNome,r.destNome,r.destDoc,
+        r.nitem,r.xProd,r.NCM,r.CEST,r.CFOP,r2(r.vProd),r.orig,
+        r2(r.aliqInter),r2(r.aliqIntra),r2(r.bcDifal),r2(r.difalDeclarado),r2(r.difalCorreto),r2(r.diferenca),stLabel];
+      const rn=5+i;const z=i%2===1;
+      xlDataRow(ws,row,rn,z);
+      [13,17,18,19,20].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+      [15,16].forEach(c=>{xlPctCell(ws.getCell(rn,c));});
+      if(Math.abs(r.diferenca)>1) xlDivCell(ws.getCell(rn,20),r.diferenca);
+    });
+    xlAutoWidth(ws,[10,8,48,5,30,22,16,6,35,12,12,6,16,4,10,10,16,16,16,16,14]);
+    if(paDifal.length) ws.autoFilter={from:{row:4,column:1},to:{row:4+paDifal.length,column:hd.length}};
+  }
+
+  // Aba Transferências entre filiais
+  if(paTransferencias.length>0){
+    const hd=['Período','NF-e','Chave','CFOP','UF','Emitente','Destinatário',
+      'Item','Descrição','NCM','CEST','Segmento','Vl.Produto',
+      'ALQ Inter','ALQ Intra','MVA','BC-ST Ref.','ICMS-ST Ref.','ST na NF?','Base Legal'];
+    const ws=wb.addWorksheet('Transferências',{views:[{state:'frozen',ySplit:4}]});
+    xlTitle(ws,'🔄 TRANSFERÊNCIAS ENTRE FILIAIS — ST DE REFERÊNCIA',hd.length,1);
+    xlSubtitle(ws,paTransferencias.length+' item(ns) · Conv. 142/18 cl. 9ª II · NÃO incluídos no total · Gerado em '+hoje,hd.length,2);
+    ws.getRow(3).height=4;
+    xlHeaderRow(ws,hd,4);
+    paTransferencias.forEach((r,i)=>{
+      const row=[r.data,r.numero,r.chave,r.CFOP,r.ufEmit,r.emitNome,r.destNome,
+        r.nitem,r.xProd,r.NCM,r.CEST,r.segNome,
+        r2(r.vProd),r2(r.aliqInter),r2(r.aliqIntra),r2(r.mvaCorreta),
+        r2(r.bcSTRef),r2(r.icmsSTRef),r.temST?'Sim':'Não',r.segBase];
+      const rn=5+i;const z=i%2===1;
+      xlDataRow(ws,row,rn,z);
+      [13,17,18].forEach(c=>{xlMoneyCell(ws.getCell(rn,c),z);});
+      [14,15,16].forEach(c=>{xlPctCell(ws.getCell(rn,c));});
+    });
+    xlAutoWidth(ws,[10,8,48,6,5,30,30,6,35,12,12,12,16,10,10,10,16,16,8,30]);
+  }
+
+  // Aba Resumo UF/Ano (excluindo devoluções)
   {const resumo=new Map();
   paResultados.filter(r=>!r.isDevolucao).forEach(r=>{
     const ano=r.data?(r.data.substring(0,4)):'????';const key=r.ufEmit+'|'+ano;
@@ -2965,6 +3125,7 @@ function executarPreAuditoriaCelulares(){
   if(!todasNotas.length){alert('Carregue arquivos XML primeiro.');return;}
   const notaMap=new Map(todasNotas.map(n=>[n.chave,n]));
   paCelResultados=[];
+  paDifal=[]; // Reset DIFAL for celulares too
 
   const MVA_ORIGINAL=0.09;
 
@@ -2990,11 +3151,36 @@ function executarPreAuditoriaCelulares(){
     const nota=notaMap.get(item.chave);
     if(!nota)return;
     if(nota.ufEmissao==='MA')return;
-
-    // Filtrar: CEST de celular OU NCM de celular
+    if(nota.destUF!=='MA')return;
     const matchCEST=isCESTCelular(item.CEST);
     const matchNCM=isNCMCelular(item.NCM);
     if(!matchCEST && !matchNCM)return;
+
+    // === DIFAL: Venda a consumidor final não contribuinte ===
+    if(nota.indFinal==='1'&&nota.destIndIERaw==='9'){
+      const aliqIntra=getAliqIntraMA(nota.data);
+      const aliqInter=getAliqInter(nota.ufEmissao||'',item.orig||'0');
+      const vProdItem=item.vProd||0;
+      const vProdTotalNFe=todasNotas.find(n=>n.chave===item.chave)?.vNF||vProdItem;
+      const proporcao=vProdTotalNFe>0?vProdItem/vProdTotalNFe:1;
+      const bcDifal=(nota.vNF||0)*proporcao;
+      const difalCorreto=Math.max(0,bcDifal*(aliqIntra-aliqInter));
+      const difalDeclarado=(nota.vICMSUFDest||0)*proporcao;
+      const diferenca=difalCorreto-difalDeclarado;
+      let statusDifal='ok';
+      if(difalDeclarado===0&&difalCorreto>1) statusDifal='sem';
+      else if(Math.abs(diferenca)>1) statusDifal='diverg';
+      paDifal.push({
+        chave:item.chave,numero:item.numero||nota.numero,serie:nota.serie,
+        data:nota.data,ufEmit:nota.ufEmissao,emitNome:nota.emitNome,emitCNPJ:nota.emitCNPJ,
+        destNome:nota.destNome||'',destDoc:nota.destDoc||'',
+        xProd:item.xProd,NCM:item.NCM,CEST:item.CEST,CFOP:(item.CFOP||'').trim(),nitem:item.nitem,
+        vProd:vProdItem,orig:item.orig,
+        aliqInter,aliqIntra,bcDifal,difalCorreto,difalDeclarado,diferenca,
+        status:statusDifal,segTag:'📱'
+      });
+      return;
+    }
 
     const dataStr=nota.data||'';
     const ufEmit=nota.ufEmissao||'';
@@ -3155,6 +3341,177 @@ async function exportarPACelulares(){
 
 let monModulo='',monMesFiltro='todos',monStatusFiltro='todos',monBusca='',monPagina=1,monPorPagina=50;
 function selMon(m,el){monModulo=m;document.querySelectorAll('.mon-mod-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');document.getElementById('mon-results').innerHTML='';const eb=document.getElementById('mon-export-btn');if(eb)eb.style.display='none';}
+/* ══════════ INVESTIGAÇÃO DE FILIAL ══════════ */
+function invIniciar(cnpj,nome){
+  INV_STATE.active=true;INV_STATE.cnpj=cnpj;INV_STATE.nome=nome;
+  INV_STATE.efdFiles=[];INV_STATE.efdData=null;INV_STATE.consolidated=null;INV_STATE.resultado=null;
+  renderMon();
+}
+function invFechar(){
+  INV_STATE.active=false;INV_STATE.cnpj='';INV_STATE.nome='';
+  INV_STATE.efdFiles=[];INV_STATE.efdData=null;INV_STATE.consolidated=null;INV_STATE.resultado=null;
+  renderMon();
+}
+async function invOnEFD(files){
+  if(!files.length)return;
+  const st=document.getElementById('inv-status');
+  if(st) st.innerHTML='<div style="font-size:12px;color:#1e3a8a;font-weight:600">⏳ Processando '+files.length+' EFD(s)...</div>';
+  try{
+    const porMes={};// {YYYYMM: {vendas,st,saidas:{}}}
+    const e210Total=[];
+    
+    for(const file of files){
+      const text=await file.text();
+      const lines=text.split(/\r?\n/);
+      INV_STATE.efdFiles.push(file.name);
+      
+      // Extract period from 0000
+      let periodo='';
+      for(const line of lines){
+        const f=line.split('|');
+        if(f[1]==='0000'&&f.length>5){
+          const dtIni=f[4]||'';// DDMMYYYY
+          if(dtIni.length===8) periodo=dtIni.substring(4,8)+dtIni.substring(2,4);// YYYYMM
+          break;
+        }
+      }
+      if(!periodo){periodo='000000';}
+      if(!porMes[periodo])porMes[periodo]={vendas:0,st:0,saidas:{},e210:0};
+      
+      let curC100=null;
+      for(const line of lines){
+        const f=line.split('|');if(f.length<3)continue;
+        if(f[1]==='C100'){curC100={op:f[2]};}
+        if(f[1]==='C190'&&curC100&&curC100.op==='1'){
+          const cst=f[2]||'',cfop=f[3]||'';
+          const vlOpr=parseFloat((f[5]||'0').replace(',','.'))||0;
+          const vlST=parseFloat((f[9]||'0').replace(',','.'))||0;
+          const key=cst+'|'+cfop;
+          if(!porMes[periodo].saidas[key])porMes[periodo].saidas[key]={cst,cfop,vlOpr:0,vlST:0,count:0};
+          porMes[periodo].saidas[key].vlOpr+=vlOpr;porMes[periodo].saidas[key].vlST+=vlST;porMes[periodo].saidas[key].count++;
+          if(cfop.startsWith('5')&&!['5151','5152','5155','5156','5912','5913'].includes(cfop)){porMes[periodo].vendas+=vlOpr;}
+          porMes[periodo].st+=vlST;
+        }
+        if(f[1]==='E210'){
+          const vlRet=parseFloat((f[8]||'0').replace(',','.'))||0;
+          if(vlRet>0){porMes[periodo].e210+=vlRet;e210Total.push(vlRet);}
+        }
+      }
+    }
+    
+    // Aggregate saídas across all months for global view
+    const saidasGlobal={};let totalVendas=0,totalST=0,totalE210=0;
+    Object.values(porMes).forEach(m=>{
+      totalVendas+=m.vendas;totalST+=m.st;totalE210+=m.e210;
+      Object.values(m.saidas).forEach(s=>{
+        const k=s.cst+'|'+s.cfop;
+        if(!saidasGlobal[k])saidasGlobal[k]={cst:s.cst,cfop:s.cfop,vlOpr:0,vlST:0,count:0};
+        saidasGlobal[k].vlOpr+=s.vlOpr;saidasGlobal[k].vlST+=s.vlST;saidasGlobal[k].count+=s.count;
+      });
+    });
+    
+    // Detect irregularities
+    const irregs=[];
+    Object.values(saidasGlobal).sort((a,b)=>b.vlOpr-a.vlOpr).forEach(s=>{
+      if(s.vlOpr<1000)return;
+      if(['5102','5103','6102'].includes(s.cfop)&&s.vlST===0) irregs.push({tipo:'danger',desc:'CFOP '+s.cfop+' CST '+s.cst,valor:s.vlOpr,st:s.vlST,msg:'Venda com CFOP de operação normal sem ST — deveria ser CFOP 5403 se mercadoria sujeita a ST'});
+      if(['5403','6403'].includes(s.cfop)&&s.vlST===0) irregs.push({tipo:'danger',desc:'CFOP '+s.cfop+' CST '+s.cst+' sem ST',valor:s.vlOpr,st:0,msg:'CFOP indica ST mas ICMS-ST = zero — CST contradiz CFOP'});
+      if(['5405','6404'].includes(s.cfop)&&s.vlOpr>1000) irregs.push({tipo:'warn',desc:'CFOP '+s.cfop+' CST '+s.cst,valor:s.vlOpr,st:0,msg:'Alega ST já retida — verificar se houve retenção nas entradas (transferências NÃO retêm ST)'});
+    });
+    
+    const transfFilial=paTransferencias.filter(t=>(t.destDoc||'')===INV_STATE.cnpj);
+    const totalTransf=transfFilial.reduce((s,t)=>s+t.vProd,0);
+    const totalSTRef=transfFilial.reduce((s,t)=>s+t.icmsSTRef,0);
+    
+    // Periods from transfers
+    const transfPorMes={};
+    transfFilial.forEach(t=>{
+      const d=(t.data||'').replace(/-/g,'');
+      const mes=d.length>=6?d.substring(0,6):'';
+      if(mes){if(!transfPorMes[mes])transfPorMes[mes]={vlTotal:0,stRef:0,count:0};transfPorMes[mes].vlTotal+=t.vProd;transfPorMes[mes].stRef+=t.icmsSTRef;transfPorMes[mes].count++;}
+    });
+    
+    INV_STATE.consolidated={porMes,saidasGlobal,totalVendas,totalST,totalE210,irregs,transfFilial,totalTransf,totalSTRef,transfPorMes};
+    renderMon();
+  }catch(err){
+    if(st) st.innerHTML='<div style="color:#b91c1c">❌ Erro: '+err.message+'</div>';
+  }
+}
+function invRenderResultado(){
+  const c=INV_STATE.consolidated;if(!c)return'';
+  const f=v=>(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pctST=c.totalVendas>0?(c.totalST/c.totalVendas*100):0;
+  
+  // All periods from both sources
+  const allPeriods=[...new Set([...Object.keys(c.porMes),...Object.keys(c.transfPorMes)])].sort();
+  const periodosCruzados=allPeriods.filter(p=>c.transfPorMes[p]&&c.porMes[p]);
+  const periodosEFD=Object.keys(c.porMes).sort();
+  const periodosXML=Object.keys(c.transfPorMes).sort();
+  
+  let h='';
+  
+  // Coverage info
+  const fmtPer=p=>{const s=String(p);return s.length>=6?s.slice(4,6)+'/'+s.slice(0,4):p;};
+  h+='<div style="padding:8px 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;margin-bottom:12px;font-size:11px;color:#1e40af">';
+  h+='<b>Cobertura:</b> XMLs (transferências): '+(periodosXML.length?fmtPer(periodosXML[0])+(periodosXML.length>1?' — '+fmtPer(periodosXML[periodosXML.length-1]):''):' nenhum')+' ('+periodosXML.length+' mês) · ';
+  h+='EFDs (filial): '+(periodosEFD.length?fmtPer(periodosEFD[0])+(periodosEFD.length>1?' — '+fmtPer(periodosEFD[periodosEFD.length-1]):''):' nenhum')+' ('+periodosEFD.length+' meses) · ';
+  h+='<b>Cruzados: '+periodosCruzados.length+' mês(es)</b>';
+  if(periodosXML.length<periodosEFD.length) h+=' · <span style="color:#b91c1c">⚠ Carregue XMLs dos demais meses para análise completa</span>';
+  h+='</div>';
+  
+  // KPIs — two panels
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">';
+  // Panel 1: cruzado
+  const cruzTransf=periodosCruzados.reduce((s,p)=>s+(c.transfPorMes[p]?.vlTotal||0),0);
+  const cruzVendas=periodosCruzados.reduce((s,p)=>s+(c.porMes[p]?.vendas||0),0);
+  const cruzST=periodosCruzados.reduce((s,p)=>s+(c.porMes[p]?.st||0),0);
+  const cruzSTRef=periodosCruzados.reduce((s,p)=>s+(c.transfPorMes[p]?.stRef||0),0);
+  const cruzPct=cruzVendas>0?(cruzST/cruzVendas*100):0;
+  h+='<div style="padding:10px 14px;background:#f0f9ff;border:1.5px solid #93c5fd;border-radius:8px"><div style="font-size:10px;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:6px">📌 Período cruzado ('+periodosCruzados.length+' mês)</div>';
+  h+='<div style="font-size:12px;color:#0f172a;line-height:1.7">Transferências: <b>R$ '+f(cruzTransf)+'</b><br>Vendas no período: <b>R$ '+f(cruzVendas)+'</b><br>ST retido: <b>R$ '+f(cruzST)+'</b> ('+cruzPct.toFixed(1)+'%)<br>ST esperado: <b>R$ '+f(cruzSTRef)+'</b><br><span style="color:#b91c1c;font-weight:700">Diferença: R$ '+f(cruzSTRef-cruzST)+'</span></div></div>';
+  // Panel 2: total EFD
+  h+='<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px">📊 Período total EFD ('+periodosEFD.length+' meses)</div>';
+  h+='<div style="font-size:12px;color:#0f172a;line-height:1.7">Vendas totais: <b>R$ '+f(c.totalVendas)+'</b><br>ST total retido: <b>R$ '+f(c.totalST)+'</b> ('+pctST.toFixed(1)+'%)<br>ST E210 apurado: <b>R$ '+f(c.totalE210)+'</b><br>Transferências (XML): <b>R$ '+f(c.totalTransf)+'</b><br>ST ref. transferências: <b>R$ '+f(c.totalSTRef)+'</b></div></div>';
+  h+='</div>';
+  
+  // Monthly cross-reference table
+  h+='<div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:6px">Tabela mensal — Transferências × Saídas × ST</div>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:6px;overflow:hidden;margin-bottom:14px"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">Mês</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#0369a1">Transf.(XML)</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">Vendas(EFD)</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#166534">ST Retido</th><th style="padding:6px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">% ST</th><th style="padding:6px 8px;text-align:center;font-size:9px;font-weight:700;color:#475569">Status</th></tr></thead><tbody>';
+  allPeriods.forEach((p,i)=>{
+    const tm=c.transfPorMes[p];const em=c.porMes[p];
+    const transf=tm?tm.vlTotal:0;const vendas=em?em.vendas:0;const st=em?em.st:0;
+    const pctM=vendas>0?(st/vendas*100):0;
+    const isCruz=tm&&em;
+    const statusBadge=!em?'<span style="font-size:9px;padding:2px 6px;background:#f1f5f9;color:#94a3b8;border-radius:4px">Sem EFD</span>':!tm?'<span style="font-size:9px;padding:2px 6px;background:#e0f2fe;color:#0369a1;border-radius:4px">Sem XML</span>':pctM<5?'<span style="font-size:9px;padding:2px 6px;background:#fef2f2;color:#b91c1c;border-radius:4px;font-weight:600">⚠ ST '+pctM.toFixed(1)+'%</span>':'<span style="font-size:9px;padding:2px 6px;background:#f0fdf4;color:#166534;border-radius:4px">✓</span>';
+    h+='<tr style="border-top:1px solid #e2e8f0;'+(isCruz?'background:#eff6ff;font-weight:600':i%2?'background:#fafbfc':'')+'"><td style="padding:5px 8px;font-weight:600">'+fmtPer(p)+(isCruz?' 🔍':'')+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;color:#0369a1">'+(transf>0?'R$ '+f(transf):'—')+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace">'+(vendas>0?'R$ '+f(vendas):'—')+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;color:'+(st>0?'#166534':'#b91c1c')+'">R$ '+f(st)+'</td><td style="padding:5px 8px;text-align:right;font-size:10px;color:'+(pctM<5&&vendas>0?'#b91c1c':'#64748b')+'">'+(vendas>0?pctM.toFixed(1)+'%':'—')+'</td><td style="padding:5px 8px;text-align:center">'+statusBadge+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  
+  // Irregularities
+  if(c.irregs.length){
+    h+='<div style="font-size:12px;font-weight:700;color:#b91c1c;margin-bottom:6px">⚠ Irregularidades detectadas nas saídas</div>';
+    h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:6px;overflow:hidden;margin-bottom:12px"><thead><tr style="background:#fef2f2"><th style="padding:5px 8px;text-align:left;font-size:9px;color:#b91c1c;font-weight:700">Tipo</th><th style="padding:5px 8px;text-align:left;font-size:9px;color:#b91c1c;font-weight:700">CST × CFOP</th><th style="padding:5px 8px;text-align:right;font-size:9px;color:#b91c1c;font-weight:700">Valor</th><th style="padding:5px 8px;text-align:right;font-size:9px;color:#b91c1c;font-weight:700">ST</th><th style="padding:5px 8px;text-align:left;font-size:9px;color:#b91c1c;font-weight:700">Observação</th></tr></thead><tbody>';
+    c.irregs.sort((a,b)=>b.valor-a.valor).forEach((ir,j)=>{
+      h+='<tr style="border-top:1px solid #fecaca;'+(j%2?'background:#fff5f5':'')+'"><td style="padding:4px 8px">'+(ir.tipo==='danger'?'❌':'⚠️')+'</td><td style="padding:4px 8px;font-weight:600">'+ir.desc+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;font-weight:700;color:#b91c1c">R$ '+f(ir.valor)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">R$ '+f(ir.st)+'</td><td style="padding:4px 8px;font-size:10px;color:#64748b;max-width:250px">'+ir.msg+'</td></tr>';
+    });
+    h+='</tbody></table>';
+  }
+  
+  // Full CST×CFOP table
+  h+='<details style="margin-bottom:12px"><summary style="font-size:12px;font-weight:700;color:#475569;cursor:pointer">Quadro completo CST × CFOP — Saídas da filial</summary>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:6px;overflow:hidden;margin-top:6px"><thead><tr style="background:#f1f5f9"><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">CST</th><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#475569">CFOP</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">Qtd</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">Valor</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">ST</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#475569">%</th></tr></thead><tbody>';
+  Object.values(c.saidasGlobal).sort((a,b)=>b.vlOpr-a.vlOpr).forEach((s,j)=>{
+    if(s.vlOpr<100)return;
+    const pctV=c.totalVendas>0?(s.vlOpr/c.totalVendas*100):0;
+    const isIrreg=(s.vlST===0&&['5403','6403'].includes(s.cfop))||(s.vlST===0&&['5102','5103'].includes(s.cfop)&&s.vlOpr>10000);
+    h+='<tr style="border-top:1px solid #e2e8f0;'+(isIrreg?'background:#fef2f2;':j%2?'background:#fafbfc':'')+'"><td style="padding:4px 8px;font-family:monospace;font-weight:600">'+s.cst+'</td><td style="padding:4px 8px;font-family:monospace">'+s.cfop+'</td><td style="padding:4px 8px;text-align:right">'+s.count+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(s.vlOpr)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;color:'+(s.vlST>0?'#166534':'#b91c1c')+'">R$ '+f(s.vlST)+'</td><td style="padding:4px 8px;text-align:right;font-size:10px;color:#64748b">'+pctV.toFixed(1)+'%</td></tr>';
+  });
+  h+='</tbody></table></details>';
+  
+  h+='<div style="font-size:10px;color:#64748b;margin-top:8px">EFDs: '+INV_STATE.efdFiles.join(', ')+'</div>';
+  return h;
+}
+
 function execMon(){if(!monModulo){alert('Selecione um módulo primeiro');return;}if(!todasNotas.length){alert('Carregue XMLs primeiro');return;}if(monModulo==='veiculos')executarPreAuditoriaVeiculos();else if(monModulo==='celulares')executarPreAuditoriaCelulares();else executarPreAuditoria();renderMon();}
 function fmt(v){return(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function getMesAno(d){if(!d)return'?';const[a,m]=d.split('-');const meses=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];return meses[parseInt(m)-1]+'/'+a;}
@@ -3341,6 +3698,102 @@ function renderMon(){
       });
       h+='</tbody></table>';
       h+='<div style="font-size:10px;color:#92400e;margin-top:8px;padding:6px 8px;background:#fefce8;border-radius:4px">Cálculo: MVA 96,72% (Ato COTEPE 61/19 Ap. XIV → MA) · Alíquota interna MA por período (18→20→22→23%) · Derivados petróleo: ICMS próprio = 0 (CF art. 155 §2º X "b") · <b>Valores não incluídos no total a cobrar</b> — encaminhar ao setor de combustíveis se necessário.</div>';
+      h+='</div></div>';
+    }
+
+    // ═══ SEÇÃO: Transferências entre filiais ═══
+    if(!isCel && paTransferencias.length>0){
+      const totSTRef=paTransferencias.reduce((s,t)=>s+t.icmsSTRef,0);
+      // Agrupar por CNPJ destinatário
+      const byDest={};
+      paTransferencias.forEach(t=>{
+        const k=t.destDoc||'?';
+        if(!byDest[k])byDest[k]={nome:t.destNome||k,cnpj:k,itens:[],vlTotal:0,stRef:0};
+        byDest[k].itens.push(t);byDest[k].vlTotal+=t.vProd;byDest[k].stRef+=t.icmsSTRef;
+      });
+      const filiais=Object.values(byDest).sort((a,b)=>b.vlTotal-a.vlTotal);
+      
+      h+='<div style="margin-top:24px">';
+      h+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span.arr\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:10px 16px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+      h+='<span class="arr" style="font-size:10px;color:#0369a1">▼</span>';
+      h+='<span style="font-size:12px;font-weight:700;color:#0369a1">🔄 Transferências entre filiais — '+paTransferencias.length+' item(ns) · '+filiais.length+' filial(is) · ST referência R$ '+fmt(totSTRef)+'</span>';
+      h+='</div>';
+      h+='<div style="padding:12px 16px;background:#f0f9ff;border:1px solid #7dd3fc;border-top:none;border-radius:0 0 10px 10px">';
+      
+      // Card por filial
+      filiais.forEach(fil=>{
+        const cnpjFmt=fil.cnpj.length===14?fil.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5'):fil.cnpj;
+        const isInv=INV_STATE.active&&INV_STATE.cnpj===fil.cnpj;
+        h+='<div style="margin-bottom:10px;padding:12px 16px;background:#fff;border:1.5px solid '+(isInv?'#1e3a8a':'#bae6fd')+';border-radius:10px">';
+        h+='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+        h+='<span style="font-size:20px">🏢</span>';
+        h+='<div style="flex:1;min-width:200px"><div style="font-size:13px;font-weight:700;color:#0f172a">'+fil.nome.substring(0,40)+'</div>';
+        h+='<div style="font-size:11px;color:#64748b">CNPJ '+cnpjFmt+' · '+fil.itens.length+' itens · R$ '+fmt(fil.vlTotal)+' · ST ref. R$ '+fmt(fil.stRef)+'</div></div>';
+        if(!isInv){
+          h+='<button onclick="invIniciar(\''+fil.cnpj+'\',\''+fil.nome.replace(/'/g,'')+'\')" style="padding:6px 16px;background:#1e3a8a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">🔍 Investigar filial</button>';
+        } else {
+          h+='<button onclick="invFechar()" style="padding:6px 16px;background:#b91c1c;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">✕ Fechar investigação</button>';
+        }
+        h+='</div>';
+        
+        // Tabela de itens colapsável
+        h+='<div style="margin-top:8px"><span onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="font-size:10px;color:#0369a1;cursor:pointer;font-weight:600">▸ Ver '+fil.itens.length+' itens</span>';
+        h+='<div style="display:none;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:10px;background:#f8fafc;border-radius:6px;overflow:hidden"><thead><tr style="background:#e0f2fe"><th style="padding:4px 6px;text-align:left">Seg</th><th style="padding:4px 6px;text-align:left">NF</th><th style="padding:4px 6px;text-align:left">Produto</th><th style="padding:4px 6px;text-align:right">Valor</th><th style="padding:4px 6px;text-align:right">ST Ref.</th><th style="padding:4px 6px;text-align:center">ST NF?</th></tr></thead><tbody>';
+        fil.itens.forEach((t,j)=>{
+          h+='<tr style="border-top:1px solid #e2e8f0;'+(j%2?'background:#f0f9ff':'')+'"><td style="padding:3px 6px">'+t.segTag+'</td><td style="padding:3px 6px;font-family:monospace">'+t.numero+'</td><td style="padding:3px 6px;max-width:200px;overflow:hidden;text-overflow:ellipsis">'+t.xProd.substring(0,30)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace">R$ '+fmt(t.vProd)+'</td><td style="padding:3px 6px;text-align:right;font-family:monospace;font-weight:600">R$ '+fmt(t.icmsSTRef)+'</td><td style="padding:3px 6px;text-align:center">'+(t.temST?'✓':'❌')+'</td></tr>';
+        });
+        h+='</tbody></table></div></div>';
+        h+='</div>';
+      });
+      
+      // Painel de investigação (se ativo)
+      if(INV_STATE.active){
+        h+='<div id="inv-panel" style="margin-top:12px;padding:16px;background:#fff;border:2px solid #1e3a8a;border-radius:12px">';
+        h+='<div style="font-size:14px;font-weight:700;color:#1e3a8a;margin-bottom:12px">🔍 Investigação — '+INV_STATE.nome.substring(0,35)+'</div>';
+        
+        if(!INV_STATE.consolidated){
+          // Upload EFDs
+          h+='<div style="text-align:center;padding:20px"><div style="font-size:12px;color:#475569;margin-bottom:12px">Carregue as EFDs da filial <b>'+INV_STATE.cnpj+'</b> para cruzar com as transferências recebidas.</div>';
+          h+='<input type="file" id="inv-efd-input" accept=".txt" multiple style="display:none" onchange="invOnEFD(this.files)">';
+          h+='<div class="drop-zone" style="padding:16px 30px;margin:0 auto;max-width:400px;cursor:pointer" onclick="document.getElementById(\'inv-efd-input\').click()"><div style="font-size:18px;margin-bottom:4px">📂</div><div class="drop-label" style="font-size:12px;font-weight:600">EFDs da filial (.txt) — arraste ou clique</div></div>';
+          h+='<div id="inv-status" style="margin-top:8px"></div></div>';
+        } else {
+          // Resultados do cruzamento
+          h+=invRenderResultado();
+        }
+        h+='</div>';
+      }
+      
+      h+='<div style="font-size:10px;color:#0369a1;margin-top:8px;padding:6px 8px;background:#e0f2fe;border-radius:4px">Conv. 142/18, cláusula 9ª, II — ST não se aplica em transferências entre filiais (exceto varejista). A filial MA deve reter ST na saída subsequente.</div>';
+      h+='</div></div>';
+    }
+
+    // ═══ SEÇÃO: DIFAL — Vendas a consumidor final não contribuinte ═══
+    if(paDifal.length>0){
+      const difSem=paDifal.filter(d=>d.status==='sem');
+      const difDiv=paDifal.filter(d=>d.status==='diverg');
+      const difOk=paDifal.filter(d=>d.status==='ok');
+      h+='<div style="margin-top:24px">';
+      h+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span.arr\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:10px 16px;background:#ede9fe;border:1px solid #c4b5fd;border-radius:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+      h+='<span class="arr" style="font-size:10px;color:#6d28d9">▶</span>';
+      h+='<span style="font-size:12px;font-weight:700;color:#6d28d9">🏷️ DIFAL — Vendas a consumidor final — '+paDifal.length+' item(ns)</span>';
+      h+='<span style="font-size:10px;color:#64748b;margin-left:8px">(não sujeitos a ST — EC 87/2015)</span>';
+      if(difSem.length) h+='<span style="font-size:10px;color:#b91c1c;font-weight:700;margin-left:8px;background:#fef2f2;padding:2px 8px;border-radius:8px">⚠ '+difSem.length+' sem DIFAL</span>';
+      if(difDiv.length) h+='<span style="font-size:10px;color:#92400e;font-weight:700;margin-left:4px;background:#fefce8;padding:2px 8px;border-radius:8px">⚠ '+difDiv.length+' divergente(s)</span>';
+      if(difOk.length) h+='<span style="font-size:10px;color:#166534;font-weight:700;margin-left:4px;background:#f0fdf4;padding:2px 8px;border-radius:8px">✓ '+difOk.length+' conferido(s)</span>';
+      h+='</div>';
+      h+='<div style="display:none;padding:12px 16px;background:#faf5ff;border:1px solid #c4b5fd;border-top:none;border-radius:0 0 10px 10px">';
+      h+='<table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff;border-radius:6px;overflow:hidden">';
+      h+='<thead><tr style="background:#ede9fe"><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#6d28d9">Status</th><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#6d28d9">Seg</th><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#6d28d9">NF</th><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#6d28d9">UF</th><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#6d28d9">Destinatário</th><th style="padding:5px 8px;text-align:left;font-size:9px;font-weight:700;color:#6d28d9">Produto</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#6d28d9">Vl.Prod</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#6d28d9">BC DIFAL</th><th style="padding:5px 8px;text-align:center;font-size:9px;font-weight:700;color:#6d28d9">ALQ</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#6d28d9">DIFAL Decl.</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#6d28d9">DIFAL Calc.</th><th style="padding:5px 8px;text-align:right;font-size:9px;font-weight:700;color:#6d28d9">Dif.</th></tr></thead><tbody>';
+      paDifal.forEach((d,j)=>{
+        const stBadge=d.status==='sem'?'<span style="color:#b91c1c;font-weight:700">⚠ SEM</span>':d.status==='diverg'?'<span style="color:#92400e;font-weight:700">⚠ DIV</span>':'<span style="color:#166534;font-weight:700">✓ OK</span>';
+        const stColor=d.status==='sem'?'background:#fef2f2;':'';
+        const difColor=Math.abs(d.diferenca)>1?'color:#b91c1c;font-weight:700':'color:#64748b';
+        const alqTxt=pct(d.aliqIntra)+' − '+pct(d.aliqInter);
+        h+='<tr style="border-top:1px solid #e9d5ff;'+stColor+(j%2?'background:#faf5ff':'')+'"><td style="padding:4px 8px">'+stBadge+'</td><td style="padding:4px 8px;font-size:12px">'+d.segTag+'</td><td style="padding:4px 8px;font-family:monospace">'+d.numero+'</td><td style="padding:4px 8px"><b>'+d.ufEmit+'</b></td><td style="padding:4px 8px;max-width:140px;overflow:hidden;text-overflow:ellipsis" title="'+(d.destNome||'')+'">'+((d.destNome||'').substring(0,18)||(d.destDoc||''))+'</td><td style="padding:4px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="'+d.xProd+'">'+d.xProd.substring(0,25)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">R$ '+fmt(d.vProd)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">R$ '+fmt(d.bcDifal)+'</td><td style="padding:4px 8px;text-align:center;font-size:9px">'+alqTxt+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace">'+(d.difalDeclarado>0?'R$ '+fmt(d.difalDeclarado):'—')+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+fmt(d.difalCorreto)+'</td><td style="padding:4px 8px;text-align:right;font-family:monospace;'+difColor+'">'+(d.status==='sem'?'—':(d.diferenca>0?'+':'')+fmt(d.diferenca))+'</td></tr>';
+      });
+      h+='</tbody></table>';
+      h+='<div style="font-size:10px;color:#6d28d9;margin-top:8px;padding:6px 8px;background:#ede9fe;border-radius:4px">DIFAL = BC × (alíq. interna MA − alíq. interestadual) · EC 87/2015 · Vendas a consumidor final não contribuinte (indFinal=1, indIEDest=9) · <b>Não sujeitas a ICMS-ST</b></div>';
       h+='</div></div>';
     }
 

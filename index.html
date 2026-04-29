@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <style>
 :root{--bg:#f5f7fb;--surface:#fff;--surface-2:#f9fafd;--border:#e4e8f1;--border-strong:#cdd4e3;--text:#0f172a;--text-2:#475569;--text-3:#94a3b8;--primary:#1e3a8a;--primary-2:#2547a8;--primary-soft:#eef2ff;--accent:#f59e0b;--accent-soft:#fef3c7;--success:#10b981;--success-soft:#d1fae5;--danger:#dc2626;--danger-soft:#fee2e2;--shadow-sm:0 1px 2px rgba(15,23,42,.04);--shadow:0 4px 12px rgba(15,23,42,.06);--shadow-lg:0 10px 30px rgba(15,23,42,.08);--radius:14px;--radius-sm:10px}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -194,6 +195,7 @@ html.dark .tt::after{background:#f1f5f9;color:#1e293b}
 .skeleton::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);animation:shimmer 1.5s infinite}
 html.dark .skeleton::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent)}
 @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+@keyframes monProgress{0%{width:0%}50%{width:60%}100%{width:95%}}
 
 .mon-toolbar{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
 .mon-mod-btn{padding:9px 18px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);font-size:13px;font-weight:600;cursor:pointer;color:var(--text-2);font-family:inherit}
@@ -595,7 +597,7 @@ function monSetModule(modulo){
   const tit=document.getElementById('mon-titulo');if(tit)tit.textContent=m.icon+' '+m.titulo;
   const sub=document.getElementById('mon-subtitulo');if(sub)sub.textContent=m.desc;
   const titR=document.getElementById('mon-titulo-res');if(titR)titR.textContent=m.icon+' '+m.titulo;
-  // Se já tem resultados deste módulo, manter. Se mudou módulo ou sem resultados, mostrar upload.
+  // Se já tem resultados deste módulo, manter.
   const hasResults=document.getElementById('mon-results')?.innerHTML.trim().length>100;
   if(hasResults&&prevMod===modulo){
     document.getElementById('mon-upload-area').style.display='none';
@@ -603,7 +605,66 @@ function monSetModule(modulo){
   } else {
     document.getElementById('mon-upload-area').style.display='block';
     document.getElementById('mon-analysis-area').style.display='none';
+    // Se já tem XMLs carregados (do Extrator ou outro módulo), mostrar resumo
+    monRenderUploadArea();
   }
+}
+
+function monRenderUploadArea(){
+  const st=document.getElementById('mon-load-status');if(!st)return;
+  if(todasNotas.length>0){
+    // Detectar segmentos nos XMLs já carregados
+    const seg=monDetectarSegmentos();
+    const m=MON_META[monModulo]||{};
+    const segKey=monModulo==='autopecas'?'autopecas':monModulo==='celulares'?'celulares':monModulo==='veiculos'?'veiculos':'';
+    const segCount=seg[segKey]||0;
+    const emitentes={};
+    todasNotas.forEach(n=>{if(n.emitNome)emitentes[n.emitNome]=(emitentes[n.emitNome]||0)+1;});
+    const topEmit=Object.entries(emitentes).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    
+    st.innerHTML='<div style="margin-top:16px;padding:16px;background:var(--primary-soft);border:1.5px solid var(--primary);border-radius:10px">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:8px">📦 '+todasNotas.length+' notas já carregadas · '+todosItens.length+' itens</div>'
+      +'<div style="font-size:11px;color:var(--text-2);margin-bottom:4px">Emitente(s): '+topEmit.map(e=>'<b>'+e[0].substring(0,25)+'</b> ('+e[1]+')').join(', ')+'</div>'
+      +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+      +(seg.autopecas?'<span style="font-size:10px;padding:2px 8px;background:#dbeafe;color:#1e40af;border-radius:10px;font-weight:600">🔧 '+seg.autopecas+' autopeças</span>':'')
+      +(seg.baterias?'<span style="font-size:10px;padding:2px 8px;background:#fef3c7;color:#92400e;border-radius:10px;font-weight:600">🔋 '+seg.baterias+' baterias</span>':'')
+      +(seg.pneumaticos?'<span style="font-size:10px;padding:2px 8px;background:#f0fdf4;color:#166534;border-radius:10px;font-weight:600">🛞 '+seg.pneumaticos+' pneumáticos</span>':'')
+      +(seg.lubrificantes?'<span style="font-size:10px;padding:2px 8px;background:#fefce8;color:#854d0e;border-radius:10px;font-weight:600">🛢️ '+seg.lubrificantes+' lubrificantes</span>':'')
+      +(seg.celulares?'<span style="font-size:10px;padding:2px 8px;background:#ede9fe;color:#6d28d9;border-radius:10px;font-weight:600">📱 '+seg.celulares+' celulares</span>':'')
+      +(seg.veiculos?'<span style="font-size:10px;padding:2px 8px;background:#fce7f3;color:#9d174d;border-radius:10px;font-weight:600">🚗 '+seg.veiculos+' veículos</span>':'')
+      +'</div>'
+      +'<div style="display:flex;gap:8px;margin-top:12px">'
+      +'<button onclick="monExecutar()" class="btn btn-primary" style="padding:8px 20px;font-size:12px;font-weight:700">'+(segCount>0?'▶ Executar monitoramento ('+segCount+' itens)':'▶ Executar monitoramento')+'</button>'
+      +'<button onclick="monLimpar();monRenderUploadArea()" class="btn btn-secondary" style="padding:8px 14px;font-size:11px">🗑️ Limpar e carregar outros</button>'
+      +'</div>'
+      +'</div>';
+    // Hide drop zone when XMLs already loaded
+    const drop=document.getElementById('mon-drop');if(drop)drop.style.display='none';
+    const fi=document.getElementById('mon-file-input');if(fi)fi.style.display='none';
+  } else {
+    st.innerHTML='';
+    const drop=document.getElementById('mon-drop');if(drop)drop.style.display='';
+  }
+}
+
+function monDetectarSegmentos(){
+  const seg={autopecas:0,baterias:0,pneumaticos:0,lubrificantes:0,celulares:0,veiculos:0};
+  todosItens.forEach(item=>{
+    const nota=todasNotas.find(n=>n.chave===item.chave);
+    if(!nota||nota.ufEmissao==='MA'||nota.destUF!=='MA')return;
+    const cest=(item.CEST||'').replace(/\./g,'');
+    const ncm=(item.NCM||'').replace(/\./g,'');
+    if(cest.startsWith('06')){seg.lubrificantes++;return;}
+    if(cest.startsWith('16')||ncm.startsWith('4011')||ncm.startsWith('4012')||ncm.startsWith('4013')){seg.pneumaticos++;return;}
+    if(ncm.startsWith('8506')||ncm.startsWith('850730')||ncm.startsWith('850780')){seg.baterias++;return;}
+    if(cest.startsWith('01')||cest.startsWith('28')){seg.autopecas++;return;}
+    if(cest.startsWith('2100')||ncm.startsWith('8517')){seg.celulares++;return;}
+    if(cest.startsWith('25')||cest.startsWith('26')){seg.veiculos++;return;}
+    // NCM fallback for autopeças
+    const ncm4=ncm.substring(0,4);
+    if(['8708','8714','4016','4823','7318','8421','8481','8482','8483','8484','8511','8512','8527','8539','9029','9032','9104','9613','9401'].includes(ncm4)){seg.autopecas++;return;}
+  });
+  return seg;
 }
 
 async function monOnDrop(ev){
@@ -613,17 +674,42 @@ async function monOnDrop(ev){
 
 async function monOnFile(files){
   const st=document.getElementById('mon-load-status');
-  if(st)st.innerHTML='<div style="font-size:12px;color:var(--primary);font-weight:600">⏳ Carregando XMLs...</div>';
-  await processarEntrada(files,false);
+  if(st)st.innerHTML='<div style="margin-top:12px"><div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:6px">⏳ Carregando XMLs...</div><div style="background:#e2e8f0;border-radius:6px;height:6px;overflow:hidden"><div id="mon-pbar" style="height:100%;background:var(--primary);width:0%;transition:width .15s;border-radius:6px"></div></div><div id="mon-ppct" style="font-size:10px;color:var(--text-3);margin-top:4px;text-align:center">0%</div></div>';
+  // Parse with progress
+  const lista=[];
+  for(const f of Array.from(files)){
+    const nome=f.name.toLowerCase();
+    if(nome.endsWith('.xml'))lista.push({name:f.name,content:await f.text()});
+    else if(nome.endsWith('.zip')){
+      try{const xmls=await extrairXMLsDoZip(f);lista.push(...xmls);}catch(e){}
+    }
+  }
+  if(!lista.length){if(st)st.innerHTML='<div style="color:#b91c1c;font-size:12px;margin-top:8px">Nenhum XML encontrado.</div>';return;}
+  const chavesVistas=new Set(todasNotas.map(n=>n.chave));
+  let ok=0,erros=0,dups=0;
+  for(let i=0;i<lista.length;i++){
+    try{const{nota,itens}=parseNFe(lista[i].content);
+      if(chavesVistas.has(nota.chave)){dups++;}
+      else{chavesVistas.add(nota.chave);todasNotas.push(nota);todosItens.push(...itens);ok++;}
+    }catch(e){erros++;}
+    const pct=Math.round(((i+1)/lista.length)*100);
+    const pb=document.getElementById('mon-pbar');if(pb)pb.style.width=pct+'%';
+    const pp=document.getElementById('mon-ppct');if(pp)pp.textContent=pct+'%';
+    if(i%50===0)await new Promise(r=>setTimeout(r,0));
+  }
   atualizarKPIs();
-  monExecutar();
+  // Show summary
+  monRenderUploadArea();
 }
 
 function monExecutar(){
   if(!todasNotas.length){alert('Nenhum XML carregado.');return;}
   document.getElementById('mon-upload-area').style.display='none';
   document.getElementById('mon-analysis-area').style.display='block';
-  execMon();
+  // Show processing indicator
+  const mr=document.getElementById('mon-results');
+  if(mr) mr.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:24px;margin-bottom:8px">⏳</div><div style="font-size:13px;font-weight:600;color:var(--primary)">Processando '+todasNotas.length+' notas...</div><div style="margin:12px auto;max-width:300px;background:#e2e8f0;border-radius:6px;height:6px;overflow:hidden"><div style="height:100%;background:var(--primary);width:0%;animation:monProgress 1.5s ease-in-out forwards;border-radius:6px"></div></div></div>';
+  setTimeout(()=>{execMon();},50); // Small delay to let UI update
 }
 
 function monLimpar(){
@@ -737,6 +823,7 @@ function parseNFe(xmlStr){
   const ender=emit?emit.getElementsByTagNameNS(NS,'enderEmit')[0]:null;
   const enderDest=dest?dest.getElementsByTagNameNS(NS,'enderDest')[0]:null;
   const tot=getNS(doc,'ICMSTot')[0],transp=getNS(doc,'transp')[0],cobr=getNS(doc,'cobr')[0];
+  const prot=getNS(doc,'infProt')[0];
   const fat=cobr?cobr.getElementsByTagNameNS(NS,'fat')[0]:null;
   const entrega=getNS(doc,'entrega')[0];
   const infAdic=getNS(doc,'infAdic')[0];
@@ -750,10 +837,12 @@ function parseNFe(xmlStr){
     chave,numero:txt(ide,'nNF'),serie:txt(ide,'serie'),data:dhEmi?dhEmi.substring(0,10):'',
     natOp:txt(ide,'natOp'),tpNF:tpNFmap[txt(ide,'tpNF')]||txt(ide,'tpNF'),
     finNFe:finMap[txt(ide,'finNFe')]||txt(ide,'finNFe'),
-    emitCNPJ:txt(emit,'CNPJ'),emitNome:txt(emit,'xNome'),
+    emitCNPJ:txt(emit,'CNPJ'),emitNome:txt(emit,'xNome'),emitFant:txt(emit,'xFant'),
     ufEmissao:ender?txt(ender,'UF'):txt(ide,'cUF'),
     emitIE:txt(emit,'IE'),emitIM:txt(emit,'IM'),emitCNAE:txt(emit,'CNAE'),
     emitCRT:crtMap[txt(emit,'CRT')]||txt(emit,'CRT'),
+    emitLgr:ender?txt(ender,'xLgr'):'',emitNro:ender?txt(ender,'nro'):'',
+    emitBairro:ender?txt(ender,'xBairro'):'',
     emitMun:ender?txt(ender,'xMun'):'',emitCEP:ender?txt(ender,'CEP'):'',emitFone:ender?txt(ender,'fone'):'',
     destDoc:dest?(txt(dest,'CNPJ')||txt(dest,'CPF')):'',destNome:dest?txt(dest,'xNome'):'',
     destUF:enderDest?txt(enderDest,'UF'):'',destIE:dest?txt(dest,'IE'):'',
@@ -761,6 +850,8 @@ function parseNFe(xmlStr){
     destIndIERaw:dest?txt(dest,'indIEDest'):'',
     indFinal:txt(ide,'indFinal'),
     idDest:txt(ide,'idDest'),
+    destLgr:enderDest?txt(enderDest,'xLgr'):'',destNro:enderDest?txt(enderDest,'nro'):'',
+    destBairro:enderDest?txt(enderDest,'xBairro'):'',
     destMun:enderDest?txt(enderDest,'xMun'):'',destCEP:enderDest?txt(enderDest,'CEP'):'',
     destFone:enderDest?txt(enderDest,'fone'):'',destEmail:dest?txt(dest,'email'):'',
     vNF:num(tot,'vNF'),vDesc:num(tot,'vDesc'),vFrete:num(tot,'vFrete'),
@@ -780,6 +871,8 @@ function parseNFe(xmlStr){
     fatVDesc:fat?num(fat,'vDesc'):0,fatVLiq:fat?num(fat,'vLiq'):0,
     duplicatas:dups,chNFeRef:nfeRefs,
     infCpl:infAdic?txt(infAdic,'infCpl'):'',infAdFisco:infAdic?txt(infAdic,'infAdFisco'):'',
+    nProt:prot?txt(prot,'nProt'):'',dhRecbto:prot?txt(prot,'dhRecbto'):'',
+    vICMSDeson:num(tot,'vICMSDeson'),vProd:num(tot,'vProd'),
     entregaUF:entrega?txt(entrega,'UF'):'',
     entregaMun:entrega?txt(entrega,'xMun'):'',
   };
@@ -1026,6 +1119,28 @@ function renderUploadSummary(){
 
   h+='</div>'; // close right column
   h+='</div>'; // close us-two-col
+
+  // ── SEGMENTOS DETECTADOS — MONITORAMENTO ──
+  const seg=monDetectarSegmentos();
+  const hasSeg=seg.autopecas+seg.baterias+seg.pneumaticos+seg.lubrificantes+seg.celulares+seg.veiculos;
+  if(hasSeg>0){
+    h+='<div class="us-section" style="margin-top:16px;padding:16px;background:var(--primary-soft);border:1.5px solid var(--primary);border-radius:10px">';
+    h+='<h3 style="margin:0 0 8px;font-size:13px;color:var(--primary)">🎯 Segmentos ST detectados — Monitoramento disponível</h3>';
+    h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">';
+    if(seg.autopecas) h+='<span style="font-size:10px;padding:3px 10px;background:#dbeafe;color:#1e40af;border-radius:10px;font-weight:600">🔧 '+seg.autopecas+' autopeças</span>';
+    if(seg.baterias) h+='<span style="font-size:10px;padding:3px 10px;background:#fef3c7;color:#92400e;border-radius:10px;font-weight:600">🔋 '+seg.baterias+' baterias</span>';
+    if(seg.pneumaticos) h+='<span style="font-size:10px;padding:3px 10px;background:#f0fdf4;color:#166534;border-radius:10px;font-weight:600">🛞 '+seg.pneumaticos+' pneumáticos</span>';
+    if(seg.lubrificantes) h+='<span style="font-size:10px;padding:3px 10px;background:#fefce8;color:#854d0e;border-radius:10px;font-weight:600">🛢️ '+seg.lubrificantes+' lubrificantes</span>';
+    if(seg.celulares) h+='<span style="font-size:10px;padding:3px 10px;background:#ede9fe;color:#6d28d9;border-radius:10px;font-weight:600">📱 '+seg.celulares+' celulares</span>';
+    if(seg.veiculos) h+='<span style="font-size:10px;padding:3px 10px;background:#fce7f3;color:#9d174d;border-radius:10px;font-weight:600">🚗 '+seg.veiculos+' veículos</span>';
+    h+='</div>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    if(seg.autopecas+seg.baterias+seg.pneumaticos+seg.lubrificantes>0) h+='<button onclick="showSection(\'autopecas\')" class="btn btn-primary" style="padding:6px 16px;font-size:11px;font-weight:700">▶ Monitorar Autopeças e Derivados</button>';
+    if(seg.celulares>0) h+='<button onclick="showSection(\'celulares\')" class="btn btn-primary" style="padding:6px 16px;font-size:11px;font-weight:700">▶ Monitorar Celulares</button>';
+    if(seg.veiculos>0) h+='<button onclick="showSection(\'veiculos\')" class="btn btn-primary" style="padding:6px 16px;font-size:11px;font-weight:700">▶ Monitorar Veículos</button>';
+    h+='</div>';
+    h+='</div>';
+  }
 
   el.innerHTML=h;
   el.style.display='block';
@@ -1401,6 +1516,19 @@ function isCESTAutopecas(cest){
   return c.startsWith('01')||c.startsWith('06')||c.startsWith('16')||c.startsWith('28');
 }
 
+// CEST preenchido mas de OUTRO segmento (não automotivo) → emitente classificou conscientemente
+function isCESTOutroSegmento(cest){
+  if(!cest) return false;
+  const c=cest.replace(/\./g,'');
+  if(c.length<2) return false;
+  // Segmentos que tratamos: 01 (autopeças), 06 (lubrificantes), 16 (pneumáticos), 28 (uso automotivo)
+  if(c.startsWith('01')||c.startsWith('06')||c.startsWith('16')||c.startsWith('28')) return false;
+  // Qualquer outro CEST preenchido (03=bebidas, 10=mat.construção, 12=mat.elétricos,
+  // 13=celulares, 15=papel, 17=plásticos, 20=prod.limpeza, 21=eletroeletrônicos,
+  // 23=ferramentas, 25/26=veículos, 27=brinquedos, etc.)
+  return true;
+}
+
 function isNCMAutopecas(ncm){
   if(!ncm) return false;
   const n=ncm.replace(/\./g,'');
@@ -1480,9 +1608,12 @@ function executarPreAuditoria(){
     if(filtroTodosCEST){
       if(!item.CEST || item.CEST.trim()==='') return false;
     } else {
+      // CEST de outro segmento → emitente classificou conscientemente, não é autopeça
+      if(isCESTOutroSegmento(item.CEST)) return false;
       let match=false;
       if(filtroCEST && isCESTAutopecas(item.CEST)) match=true;
-      if(filtroNCM && isNCMAutopecas(item.NCM)) match=true;
+      // NCM como fallback apenas quando CEST vazio ou não preenchido
+      if(filtroNCM && (!item.CEST || item.CEST.trim()==='') && isNCMAutopecas(item.NCM)) match=true;
       if(!match) return false;
     }
     return true;
@@ -1932,7 +2063,7 @@ function renderPATable(){
     const segCell=r.forcado?'<span title="CEST excluído pelo Prot. 95/22 — incluído manualmente no cálculo" style="background:#fef3c7;padding:1px 4px;border-radius:3px">⊕ '+segLabel+'</span>':segLabel;
     h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}</td><td style="font-size:10px;white-space:nowrap">${segCell}</td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
     h+=`<tr id="pad-${i}" style="display:none;background:#f8fafc;border-left:3px solid #1e40af"><td colspan="11" style="padding:6px 0">
-     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Identificação</h5><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · ${r.segTag||'🔧'} <b>${r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça'}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${r.segBase?' · <span style="color:#64748b;font-size:11px">'+r.segBase+'</span>':''}</div></div>
+     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h5 style="margin:0;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;flex:1">Identificação</h5><button onclick="navigator.clipboard.writeText('${r.chave||''}').then(()=>this.textContent='✓ Copiada')" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button><button onclick="gerarDANFE('${r.chave||''}','${r.nitem||''}')" style="padding:3px 10px;border:1px solid #93c5fd;border-radius:5px;background:#eff6ff;font-size:9px;cursor:pointer;color:#1e40af;font-weight:600">🖨️ DANFE</button></div><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · ${r.segTag||'🔧'} <b>${r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça'}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${r.segBase?' · <span style="color:#64748b;font-size:11px">'+r.segBase+'</span>':''}</div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA orig. <b>${pct(r.mvaOriginal)}</b>${r.regime!=='SN'?' → ajustada <b>'+pct(r.mvaCorreta)+'</b>':' (SN, sem ajuste)'} → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 8px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Comparação Declarado × Correto</h5><table style="max-width:480px;font-size:13px;font-variant-numeric:tabular-nums;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:5px 16px 5px 0;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0"></th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Declarado</th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Correto</th><th style="text-align:right;padding:5px 0 5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Diferença</th></tr></thead><tbody>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">BC-ST</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTDeclarado)}</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
@@ -3341,6 +3472,192 @@ async function exportarPACelulares(){
 
 let monModulo='',monMesFiltro='todos',monStatusFiltro='todos',monBusca='',monPagina=1,monPorPagina=50;
 function selMon(m,el){monModulo=m;document.querySelectorAll('.mon-mod-btn').forEach(b=>b.classList.remove('active'));el.classList.add('active');document.getElementById('mon-results').innerHTML='';const eb=document.getElementById('mon-export-btn');if(eb)eb.style.display='none';}
+/* ══════════ DANFE GENERATOR ══════════ */
+function gerarDANFE(chave,nItemDestaque){
+  const nota=todasNotas.find(n=>n.chave===chave);
+  if(!nota){alert('Nota não encontrada');return;}
+  const itens=todosItens.filter(it=>it.chave===chave);
+  const f=v=>(+(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtCNPJ=c=>c&&c.length===14?c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5'):c||'';
+  const fmtCPF=c=>c&&c.length===11?c.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4'):c||'';
+  const fmtCEP=c=>c&&c.length===8?c.replace(/^(\d{5})(\d{3})$/,'$1-$2'):c||'';
+  const destDoc=nota.destDoc||'';
+  const destDocFmt=destDoc.length===14?fmtCNPJ(destDoc):destDoc.length===11?fmtCPF(destDoc):destDoc;
+  const ch=chave||'';
+  const chFmt=ch.replace(/(\d{4})/g,'$1 ').trim();
+  const dtEmi=nota.data?(nota.data.substring(8,10)+'/'+nota.data.substring(5,7)+'/'+nota.data.substring(0,4)):'';
+  const modFrete=nota.transpMod||'';
+  
+  // Alert info from paResultados
+  const alertResult=paResultados.find(r=>r.chave===chave&&String(r.nitem)===String(nItemDestaque));
+  let alertHtml='';
+  if(alertResult){
+    const stRef=alertResult.status==='sem'?'Sem retenção ICMS-ST · ST devido: <b>R$ '+f(alertResult.icmsSTCorreto)+'</b>':alertResult.status==='diverg'?'Divergência ICMS-ST · Declarado R$ '+f(alertResult.stDeclarado)+' × Correto R$ '+f(alertResult.icmsSTCorreto)+' · Diferença <b>R$ '+f(alertResult.diferenca)+'</b>':'';
+    if(stRef) alertHtml='<div style="margin-top:8px;padding:8px 12px;background:#fef2f2;border:2px solid #f87171;border-radius:6px"><div style="font-size:9pt;font-weight:bold;color:#991b1b;margin-bottom:3px">⚠ ALERTA RADAR ST</div><div style="font-size:7.5pt;color:#7f1d1d;line-height:1.5">'+stRef+'<br><span style="color:#64748b">Gerado por Radar ST v3.1 · Não faz parte do DANFE oficial</span></div></div>';
+  }
+  // Check transferencias too
+  const alertTransf=paTransferencias.find(r=>r.chave===chave);
+  if(!alertHtml&&alertTransf){
+    alertHtml='<div style="margin-top:8px;padding:8px 12px;background:#fef2f2;border:2px solid #f87171;border-radius:6px"><div style="font-size:9pt;font-weight:bold;color:#991b1b;margin-bottom:3px">⚠ ALERTA RADAR ST — Transferência sem ICMS-ST</div><div style="font-size:7.5pt;color:#7f1d1d;line-height:1.5">ST referência: <b>R$ '+f(alertTransf.icmsSTRef)+'</b> · MVA '+((alertTransf.mvaCorreta*100).toFixed(2))+'% · Verificar se filial reteve ST na saída.<br><span style="color:#64748b">Gerado por Radar ST v3.1 · Não faz parte do DANFE oficial</span></div></div>';
+  }
+
+  // Build items table rows
+  let itensRows='';
+  itens.forEach((it,idx)=>{
+    const isHL=String(it.nitem||idx+1)===String(nItemDestaque);
+    itensRows+=`<tr${isHL?' class="item-highlight"':''}>
+      <td class="center">${it.nitem||idx+1}</td>
+      <td style="font-size:6pt">${(it.cProd||'').replace(/^0+/,'').substring(0,12)}</td>
+      <td>${it.xProd||''}</td>
+      <td>${it.NCM||''}</td>
+      <td class="center">${it.orig||''}${it.CST||''}</td>
+      <td class="center">${it.CFOP||''}</td>
+      <td class="center">${it.uCom||'UN'}</td>
+      <td class="right">${it.qCom||''}</td>
+      <td class="right">${f(it.vUnCom||0)}</td>
+      <td class="right" style="font-weight:bold">${f(it.vProd||0)}</td>
+      <td class="right">${f(it.bcICMS||it.vBC||0)}</td>
+      <td class="right">${f(it.icms||0)}</td>
+      <td class="right">${it.ipi?f(it.ipi):'—'}</td>
+      <td class="right">${it.pICMS?it.pICMS.toFixed(2):'—'}</td>
+    </tr>`;
+  });
+
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>DANFE — NF-e ${nota.numero||''}</title>
+<style>
+@page{size:A4;margin:8mm}*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#000;background:#f5f5f5;padding:20px}
+.danfe-page{width:210mm;min-height:280mm;background:#fff;margin:0 auto;padding:6mm;border:1px solid #ccc;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+@media print{body{background:#fff;padding:0}.danfe-page{border:none;box-shadow:none;padding:6mm}.no-print{display:none!important}}
+table{border-collapse:collapse;width:100%}
+.brd{border:1px solid #000}.brd td,.brd th{border:1px solid #000;padding:2px 4px;vertical-align:top}
+.lbl{font-size:6pt;color:#333;text-transform:uppercase;font-weight:normal;display:block;line-height:1.2}
+.val{font-size:8.5pt;font-weight:bold;display:block;line-height:1.4;min-height:10pt}
+.val-sm{font-size:7.5pt;font-weight:bold;display:block;line-height:1.3;min-height:9pt}
+.center{text-align:center}.right{text-align:right}
+.titulo-danfe{font-size:14pt;font-weight:bold;text-align:center;letter-spacing:2px}
+.titulo-tipo{font-size:7pt;text-align:center;margin-top:2px}
+.chave-box{font-family:'Courier New',monospace;font-size:7pt;letter-spacing:.5px;text-align:center;padding:3px;word-break:break-all}
+.barcode-area{text-align:center;padding:4px 2px}
+.secao{font-size:7pt;font-weight:bold;background:#e8e8e8;padding:2px 4px;text-transform:uppercase;letter-spacing:.5px}
+.item-highlight{background:#fff3cd!important}
+.items-table td{font-size:7pt;padding:1.5px 3px;border:1px solid #000}
+.items-table th{font-size:6pt;padding:2px 3px;border:1px solid #000;background:#f0f0f0;font-weight:bold;text-transform:uppercase}
+.toolbar{text-align:center;padding:16px;background:#f5f5f5}
+.no-print-btn{background:#1e3a8a;color:#fff;padding:10px 20px;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;margin:4px}
+</style></head><body>
+<div class="toolbar no-print">
+  <button class="no-print-btn" onclick="window.print()">🖨️ Imprimir</button>
+  <button class="no-print-btn" onclick="window.close()" style="background:#64748b">✕ Fechar</button>
+</div>
+<div class="danfe-page">
+<table class="brd"><tr>
+  <td style="width:56%;padding:4px 6px" rowspan="3">
+    <div style="font-size:12pt;font-weight:bold;margin-bottom:3px">${nota.emitNome||''}</div>
+    ${nota.emitFant?'<div style="font-size:7.5pt;color:#444;margin-bottom:1px">'+nota.emitFant+'</div>':''}
+    <div style="font-size:7pt;line-height:1.5;margin-top:4px">
+      ${(nota.emitLgr||'')+(nota.emitNro?', '+nota.emitNro:'')}<br>
+      ${nota.emitBairro||''} — ${nota.emitMun||''} / ${nota.ufEmissao||''}<br>
+      CEP ${fmtCEP(nota.emitCEP||'')} ${nota.emitFone?'· Fone: '+nota.emitFone:''}
+    </div>
+  </td>
+  <td style="width:22%;padding:4px" class="center">
+    <div class="titulo-danfe">DANFE</div>
+    <div class="titulo-tipo">Documento Auxiliar da<br>Nota Fiscal Eletrônica</div>
+    <div style="margin-top:6px"><span class="lbl">${nota.tpNF==='Saída'||nota.tpNF==='1'?'SAÍDA':'ENTRADA'}</span>
+      <span style="display:inline-block;width:14px;height:14px;border:1px solid #000;vertical-align:middle;text-align:center;font-size:10pt;line-height:14px">${nota.tpNF==='Saída'||nota.tpNF==='1'?'1':'0'}</span></div>
+    <div style="margin-top:4px"><span class="lbl">Nº</span> <span class="val" style="font-size:11pt">${(nota.numero||'').replace(/(\d)(?=(\d{3})+$)/g,'$1.')}</span></div>
+    <div><span class="lbl">Série</span> <span class="val">${nota.serie||'1'}</span></div>
+  </td>
+  <td style="width:22%;padding:4px">
+    <div class="barcode-area"><svg id="danfe-barcode"></svg></div>
+    <div class="chave-box">${chFmt}</div>
+  </td>
+</tr><tr>
+  <td colspan="2" style="padding:2px 4px">
+    <span class="lbl">Protocolo de autorização</span>
+    <span class="val-sm">${nota.nProt||''} — ${nota.dhRecbto?nota.dhRecbto.substring(8,10)+'/'+nota.dhRecbto.substring(5,7)+'/'+nota.dhRecbto.substring(0,4)+' '+nota.dhRecbto.substring(11,19):''}</span>
+  </td>
+</tr></table>
+
+<table class="brd" style="margin-top:-1px"><tr>
+  <td style="width:70%"><span class="lbl">Natureza da operação</span><span class="val-sm">${nota.natOp||''}</span></td>
+  <td><span class="lbl">CNPJ</span><span class="val-sm">${fmtCNPJ(nota.emitCNPJ||'')}</span></td>
+  <td><span class="lbl">I.E.</span><span class="val-sm">${nota.emitIE||''}</span></td>
+</tr></table>
+
+<table class="brd" style="margin-top:-1px">
+<tr><td colspan="6" class="secao">Destinatário / Remetente</td></tr>
+<tr>
+  <td style="width:50%"><span class="lbl">Nome / Razão Social</span><span class="val-sm">${nota.destNome||''}</span></td>
+  <td style="width:22%"><span class="lbl">CNPJ / CPF</span><span class="val-sm">${destDocFmt}</span></td>
+  <td><span class="lbl">Data emissão</span><span class="val-sm">${dtEmi}</span></td>
+</tr><tr>
+  <td><span class="lbl">Endereço</span><span class="val-sm">${(nota.destLgr||'')+(nota.destNro?', '+nota.destNro:'')+(nota.destBairro?' — '+nota.destBairro:'')}</span></td>
+  <td><span class="lbl">Município</span><span class="val-sm">${nota.destMun||''}</span></td>
+  <td><span class="lbl">UF</span><span class="val-sm">${nota.destUF||''}</span></td>
+</tr><tr>
+  <td><span class="lbl">CEP</span><span class="val-sm">${fmtCEP(nota.destCEP||'')}</span></td>
+  <td><span class="lbl">I.E.</span><span class="val-sm">${nota.destIE||''}</span></td>
+  <td><span class="lbl">Fone</span><span class="val-sm">${nota.destFone||''}</span></td>
+</tr></table>
+
+<table class="brd" style="margin-top:-1px"><tr><td class="secao">Dados dos Produtos / Serviços</td></tr></table>
+<table class="items-table brd" style="margin-top:-1px">
+<thead><tr>
+  <th style="width:4%">#</th><th style="width:9%">Cód.</th><th style="width:28%">Descrição</th>
+  <th style="width:6%">NCM</th><th style="width:5%">CST</th><th style="width:4%">CFOP</th>
+  <th style="width:3%">UN</th><th style="width:5%" class="right">Qtd</th>
+  <th style="width:7%" class="right">Vl.Unit.</th><th style="width:8%" class="right">Vl.Total</th>
+  <th style="width:7%" class="right">BC ICMS</th><th style="width:6%" class="right">Vl.ICMS</th>
+  <th style="width:5%" class="right">Vl.IPI</th><th style="width:4%" class="right">%ICMS</th>
+</tr></thead><tbody>${itensRows}</tbody></table>
+
+<table class="brd" style="margin-top:-1px">
+<tr><td colspan="8" class="secao">Cálculo do Imposto</td></tr>
+<tr>
+  <td><span class="lbl">Base cálc. ICMS</span><span class="val-sm">${f(nota.vBC||0)}</span></td>
+  <td><span class="lbl">Valor ICMS</span><span class="val-sm">${f(nota.vICMS||0)}</span></td>
+  <td><span class="lbl">Base cálc. ST</span><span class="val-sm">${f(nota.vBCST||0)}</span></td>
+  <td><span class="lbl">Valor ICMS-ST</span><span class="val-sm" ${(nota.vST||0)===0?'style="color:#b91c1c"':''}>${f(nota.vST||0)}</span></td>
+  <td><span class="lbl">Valor IPI</span><span class="val-sm">${f(nota.vIPI||0)}</span></td>
+  <td><span class="lbl">Valor produtos</span><span class="val-sm">${f(nota.vProd||0)}</span></td>
+  <td><span class="lbl">Valor frete</span><span class="val-sm">${f(nota.vFrete||0)}</span></td>
+  <td><span class="lbl">Valor total NF</span><span class="val-sm" style="font-size:9pt">${f(nota.vNF||0)}</span></td>
+</tr><tr>
+  <td colspan="2"><span class="lbl">Outras desp.</span><span class="val-sm">${f(nota.vOutro||0)}</span></td>
+  <td colspan="2"><span class="lbl">Desconto</span><span class="val-sm">${f(nota.vDesc||0)}</span></td>
+  <td colspan="2"><span class="lbl">Seguro</span><span class="val-sm">${f(nota.vSeg||0)}</span></td>
+  <td colspan="2"><span class="lbl">ICMS desonerado</span><span class="val-sm">${f(nota.vICMSDeson||0)}</span></td>
+</tr></table>
+
+<table class="brd" style="margin-top:-1px">
+<tr><td colspan="6" class="secao">Transportador / Volumes</td></tr>
+<tr>
+  <td><span class="lbl">Frete por conta</span><span class="val-sm">${modFrete}</span></td>
+  <td><span class="lbl">Espécie</span><span class="val-sm">${nota.transpEsp||''}</span></td>
+  <td><span class="lbl">Peso líquido</span><span class="val-sm">${nota.transpPesoL||''}</span></td>
+  <td><span class="lbl">Peso bruto</span><span class="val-sm">${nota.transpPesoB||''}</span></td>
+</tr></table>
+
+<table class="brd" style="margin-top:-1px">
+<tr><td colspan="2" class="secao">Dados Adicionais</td></tr>
+<tr>
+  <td style="width:60%;min-height:30px;padding:4px"><span class="lbl">Informações complementares</span>
+    <span style="font-size:6.5pt;display:block;margin-top:2px;line-height:1.4;color:#333">${(nota.infCpl||'').substring(0,500)}</span></td>
+  <td style="padding:4px"><span class="lbl">Reservado ao Fisco</span></td>
+</tr></table>
+
+${alertHtml}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+<script>try{JsBarcode("#danfe-barcode","${ch}",{format:"CODE128",width:1.2,height:40,displayValue:false,margin:0});}catch(e){}<\/script>
+</body></html>`;
+
+  const w=window.open('','_blank');
+  if(w){w.document.write(html);w.document.close();}
+}
+
 /* ══════════ INVESTIGAÇÃO DE FILIAL ══════════ */
 function invIniciar(cnpj,nome){
   INV_STATE.active=true;INV_STATE.cnpj=cnpj;INV_STATE.nome=nome;
@@ -3648,7 +3965,7 @@ function renderMon(){
       const rowStyle=isDev||isUsadoR?'opacity:0.6;':'';
       h+=`<tr class="main" style="${rowStyle}cursor:pointer;border-bottom:1px solid #f1f5f9${gi%2===0?';background:#fafbfc':''}" onclick="(function(e,a){var d=document.getElementById('apd-${gi}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${antecBadge}${alertIcon}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
       h+=`<tr id="apd-${gi}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
-       <div class="ap-section"><h5>Identificação</h5><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}${isUsadoR?' · <b style="color:#7c3aed">CELULAR USADO</b>':''}</div></div>
+       <div class="ap-section"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h5 style="flex:1;margin:0">Identificação</h5><button onclick="navigator.clipboard.writeText('${r.chave||''}').then(()=>this.textContent='✓ Copiada')" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button><button onclick="gerarDANFE('${r.chave||''}','${r.nitem||''}')" style="padding:3px 10px;border:1px solid #93c5fd;border-radius:5px;background:#eff6ff;font-size:9px;cursor:pointer;color:#1e40af;font-weight:600">🖨️ DANFE</button></div><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}${isUsadoR?' · <b style="color:#7c3aed">CELULAR USADO</b>':''}</div></div>
        <div class="ap-section"><h5>Cálculo da base</h5><div class="row">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
        <div class="ap-section"><h5>Comparação Declarado × Correto</h5><table class="ap-cmp"><thead><tr><th></th><th>Declarado</th><th>Correto</th><th>Diferença</th></tr></thead><tbody>
         <tr><td>BC-ST</td><td>R$ ${fmt(r.bcSTDeclarado)}</td><td>R$ ${fmt(r.bcSTCorreta)}</td><td>—</td></tr>

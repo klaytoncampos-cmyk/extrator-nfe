@@ -336,6 +336,7 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div class="nav-item" onclick="navTo('celulares',this)"><span>📱</span><span>Celulares</span></div>
 <div class="nav-section">Declarações</div>
 <div class="nav-item" onclick="navTo('efd',this)"><span>📊</span><span>EFD ICMS</span></div>
+<div class="nav-item" onclick="navTo('oie',this)"><span>🔄</span><span>OIE × Pagamentos</span></div>
 <div class="nav-section">Outros</div>
 <div class="nav-item" onclick="navTo('relatorios',this)"><span>📝</span><span>Relatórios</span></div>
 <div class="nav-item" onclick="navTo('extrator',this)"><span>📤</span><span>Extrator NF-e</span></div>
@@ -368,13 +369,21 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
     <div style="font-size:11px;color:var(--text-3);line-height:1.4">Conv. 213/17 · MVA 9% · Antecipação UFs</div>
   </div>
 </div>
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
   <div onclick="navTo('efd')" style="cursor:pointer;padding:20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
     <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Declarações</div>
     <div style="font-size:24px;margin-bottom:6px">📊</div>
     <div style="font-size:13px;font-weight:700;color:var(--text)">EFD ICMS</div>
     <div style="font-size:11px;color:var(--text-3);margin-top:2px">Visualização e análise de EFD + cruzamento DIMP</div>
   </div>
+  <div onclick="navTo('oie')" style="cursor:pointer;padding:20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+    <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Conciliação</div>
+    <div style="font-size:24px;margin-bottom:6px">🔄</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text)">OIE × Pagamentos</div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Cruzamento ST declarado na EFD com arrecadação efetiva</div>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
   <div onclick="navTo('relatorios')" style="cursor:pointer;padding:20px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;transition:all .2s" onmouseover="this.style.borderColor='var(--primary)';this.style.background='var(--primary-soft)'" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
     <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Relatórios</div>
     <div style="font-size:24px;margin-bottom:6px">📝</div>
@@ -555,6 +564,38 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 <div id="efd-analise-area" style="display:none"></div>
 
 </section>
+
+<!-- ══ OIE × PAGAMENTOS ══ -->
+<section class="section" id="sec-oie">
+<h1>🔄 Conciliação OIE × Pagamentos</h1>
+<p class="subtitle">Cruzamento de ST declarado na EFD (E200/E210) com arrecadação efetiva (GNRE/DARE)</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0">
+  <div class="drop-zone" id="oie-drop-efd" ondragover="event.preventDefault();this.classList.add('hover')" ondragleave="this.classList.remove('hover')" ondrop="event.preventDefault();this.classList.remove('hover');oieLoadEFD(event.dataTransfer.files)">
+    <input type="file" id="oie-file-efd" accept=".xlsx,.xls,.csv" onchange="oieLoadEFD(this.files)" style="display:none">
+    <div class="drop-icon" onclick="document.getElementById('oie-file-efd').click()" style="cursor:pointer">📋</div>
+    <div class="drop-label">EFD — OIE (.xlsx)</div>
+    <div class="drop-hint">CNPJ, Período, VL_RETENCAO_ST, VL_ICMS_RECOL_ST, UF, etc.</div>
+    <div id="oie-efd-status" style="margin-top:8px;font-size:12px;color:var(--success);display:none"></div>
+  </div>
+  <div class="drop-zone" id="oie-drop-pag" ondragover="event.preventDefault();this.classList.add('hover')" ondragleave="this.classList.remove('hover')" ondrop="event.preventDefault();this.classList.remove('hover');oieLoadPag(event.dataTransfer.files)">
+    <input type="file" id="oie-file-pag" accept=".csv,.xlsx,.xls" onchange="oieLoadPag(this.files)" style="display:none">
+    <div class="drop-icon" onclick="document.getElementById('oie-file-pag').click()" style="cursor:pointer">💳</div>
+    <div class="drop-label">Pagamentos (.csv)</div>
+    <div class="drop-hint">CNPJ, Mês Ano, Código da Receita, Valor Total</div>
+    <div id="oie-pag-status" style="margin-top:8px;font-size:12px;color:var(--success);display:none"></div>
+  </div>
+</div>
+
+<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+  <button class="btn btn-primary" onclick="oieCruzar()" id="oie-btn-cruzar" disabled style="padding:10px 24px">▶ Cruzar</button>
+  <label style="font-size:12px;color:var(--text-3);display:flex;align-items:center;gap:6px"><input type="checkbox" id="oie-agrupar-raiz" style="accent-color:var(--primary)"> Agrupar por CNPJ raiz (8 dígitos)</label>
+  <button class="btn btn-secondary" onclick="oieLimpar()" style="font-size:11px;padding:6px 14px">🔄 Limpar</button>
+</div>
+
+<div id="oie-results"></div>
+</section>
+
 </main>
 </div>
 <footer class="app-footer">Radar ST · v3.1 · EFD integrado · Abril/2026</footer>
@@ -7189,6 +7230,391 @@ async function efdExportar(){
   }
   
   await xlSave(wb,'EFD_'+e.cnpj+'_'+hoje+'.xlsx');
+}
+
+/* ══════════ OIE × PAGAMENTOS ══════════ */
+let oieEFDData=[],oiePagData=[],oieResultados=[],oieStatusFiltro='todos',oiePagina=1;
+const OIE_PER_PAGE=50;
+
+function oieLimpar(){
+  oieEFDData=[];oiePagData=[];oieResultados=[];oieStatusFiltro='todos';oiePagina=1;
+  document.getElementById('oie-results').innerHTML='';
+  document.getElementById('oie-efd-status').style.display='none';
+  document.getElementById('oie-pag-status').style.display='none';
+  document.getElementById('oie-btn-cruzar').disabled=true;
+}
+
+async function oieLoadEFD(files){
+  if(!files||!files.length)return;
+  const f=files[0];
+  const buf=await f.arrayBuffer();
+  const wb=XLSX.read(buf,{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+  // Map columns
+  oieEFDData=[];
+  const cnpjKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('CNPJ'))||'CNPJ';
+  const periodoKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('PERIODO'))||'PERIODO';
+  const retKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('VL_RETENCAO'))||'VL_RETENCAO_ST';
+  const recolKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('VL_ICMS_RECOL'))||'VL_ICMS_RECOL_ST';
+  const credAntKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('SLD_CRED_ANT'))||'';
+  const credTranKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('SLD_CRED_ST_TRAN'))||'';
+  const codRecKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('COD_REC'))||'';
+  const vlOrKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('VL_OR'))||'';
+  const dtVctoKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('DT_VCTO'))||'';
+  const nomeKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('NOME'))||'';
+  const ufKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('UF'))||'';
+  const ultKey=Object.keys(rows[0]).find(k=>k.toUpperCase().includes('ULTIMA'))||'';
+  rows.forEach(r=>{
+    const cnpj=String(r[cnpjKey]||'').replace(/\D/g,'');
+    const cnpjPad=cnpj.length<14?cnpj.padStart(14,'0'):cnpj;
+    oieEFDData.push({
+      cnpj:cnpjPad,cnpjRaiz:cnpjPad.substring(0,8),
+      periodo:String(r[periodoKey]||''),
+      vlRetencao:+(r[retKey]||0),vlRecol:+(r[recolKey]||0),
+      vlCredAnt:+(r[credAntKey]||0),vlCredTran:+(r[credTranKey]||0),
+      codRec:String(r[codRecKey]||''),vlOr:+(r[vlOrKey]||0),
+      dtVcto:String(r[dtVctoKey]||''),nome:String(r[nomeKey]||''),
+      uf:String(r[ufKey]||''),ultima:+(r[ultKey]||0)
+    });
+  });
+  const cnpjsUniq=new Set(oieEFDData.map(r=>r.cnpj));
+  const st=document.getElementById('oie-efd-status');
+  st.innerHTML='✅ '+cnpjsUniq.size+' empresas · '+oieEFDData.length+' linhas · '+f.name;
+  st.style.display='block';
+  document.getElementById('oie-btn-cruzar').disabled=!(oieEFDData.length&&oiePagData.length);
+}
+
+async function oieLoadPag(files){
+  if(!files||!files.length)return;
+  const f=files[0];
+  const text=await f.text();
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return;
+  // Detect separator
+  const sep=lines[0].includes(';')?';':',';
+  // Parse CSV (handle quoted values with comma inside)
+  function parseCSVLine(line,sep){
+    const cols=[];let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){inQ=!inQ;}
+      else if(c===sep&&!inQ){cols.push(cur.trim());cur='';}
+      else{cur+=c;}
+    }
+    cols.push(cur.trim());
+    return cols;
+  }
+  const headers=parseCSVLine(lines[0],sep).map(h=>h.replace(/^\uFEFF/,'').trim());
+  const cnpjIdx=headers.findIndex(h=>h.toUpperCase().includes('CNPJ'));
+  const mesIdx=headers.findIndex(h=>h.toUpperCase().includes('MES')||h.toUpperCase().includes('MÊS'));
+  const codIdx=headers.findIndex(h=>h.toUpperCase().includes('CODIGO')||h.toUpperCase().includes('CÓDIGO'));
+  const nomeRecIdx=headers.findIndex(h=>h.toUpperCase().includes('NOME DA RECEITA')||h.toUpperCase().includes('NOME_RECEITA'));
+  const valIdx=headers.findIndex(h=>h.toUpperCase().includes('VALOR'));
+  oiePagData=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=parseCSVLine(lines[i],sep);
+    if(cols.length<3)continue;
+    const cnpj=(cols[cnpjIdx]||'').replace(/\D/g,'');
+    const cnpjPad=cnpj.length<14?cnpj.padStart(14,'0'):cnpj;
+    const valStr=(cols[valIdx]||'0').replace(/\./g,'').replace(',','.');
+    oiePagData.push({
+      cnpj:cnpjPad,cnpjRaiz:cnpjPad.substring(0,8),
+      periodo:cols[mesIdx]||'',
+      codRec:cols[codIdx]||'',
+      nomeRec:cols[nomeRecIdx]||'',
+      valor:parseFloat(valStr)||0
+    });
+  }
+  const cnpjsUniq=new Set(oiePagData.map(r=>r.cnpj));
+  const st=document.getElementById('oie-pag-status');
+  st.innerHTML='✅ '+cnpjsUniq.size+' empresas · '+oiePagData.length+' linhas · '+f.name;
+  st.style.display='block';
+  document.getElementById('oie-btn-cruzar').disabled=!(oieEFDData.length&&oiePagData.length);
+}
+
+function oieCruzar(){
+  if(!oieEFDData.length||!oiePagData.length){alert('Carregue ambos os arquivos');return;}
+  const agruparRaiz=document.getElementById('oie-agrupar-raiz').checked;
+  const keyFn=agruparRaiz?(r=>r.cnpjRaiz):(r=>r.cnpj);
+
+  // Agrupar EFD por CNPJ (único por empresa: pegar primeiro com vlRecol)
+  const efdMap=new Map();
+  oieEFDData.forEach(r=>{
+    const k=keyFn(r);
+    if(!efdMap.has(k)){
+      efdMap.set(k,{cnpj:r.cnpj,cnpjRaiz:r.cnpjRaiz,nome:r.nome,uf:r.uf,periodo:r.periodo,
+        vlRetencao:r.vlRetencao,vlRecol:r.vlRecol,vlCredAnt:r.vlCredAnt,vlCredTran:r.vlCredTran,
+        vlOr:r.vlOr,codRec:r.codRec,dtVcto:r.dtVcto,obrigacoes:[]});
+    }
+    const e=efdMap.get(k);
+    if(r.vlOr>0) e.obrigacoes.push({vlOr:r.vlOr,codRec:r.codRec,dtVcto:r.dtVcto});
+    // Nome e UF: pegar mais completo
+    if(!e.nome&&r.nome)e.nome=r.nome;
+    if(!e.uf&&r.uf)e.uf=r.uf;
+  });
+
+  // Agrupar pagamentos por CNPJ e código
+  const pagMap=new Map();
+  oiePagData.forEach(r=>{
+    const k=keyFn(r);
+    if(!pagMap.has(k)) pagMap.set(k,{total:0,cod602:0,cod604:0,cod110:0,outros:0,detalhe:[]});
+    const p=pagMap.get(k);
+    p.total+=r.valor;
+    if(r.codRec==='602')p.cod602+=r.valor;
+    else if(r.codRec==='604')p.cod604+=r.valor;
+    else if(r.codRec==='110')p.cod110+=r.valor;
+    else p.outros+=r.valor;
+    p.detalhe.push(r);
+  });
+
+  // Cruzar
+  oieResultados=[];
+  const allKeys=new Set([...efdMap.keys(),...pagMap.keys()]);
+  allKeys.forEach(k=>{
+    const efd=efdMap.get(k);
+    const pag=pagMap.get(k);
+    const declarado=efd?efd.vlRecol:0;
+    const pago602=pag?pag.cod602:0;
+    const dif=declarado-pago602;
+    let status='regular';
+    if(!pag&&declarado>0) status='sem_pagto';
+    else if(!pag&&declarado===0) status='regular'; // nada a pagar, nada pagou
+    else if(!efd&&pago602>0) status='so_pagou';
+    else if(Math.abs(dif)<1) status='regular';
+    else if(dif>100) status='divergente_menor'; // pagou menos
+    else if(dif<-100) status='divergente_maior'; // pagou mais
+    else status='proximo';
+    oieResultados.push({
+      key:k,cnpj:efd?efd.cnpj:(pag?pag.detalhe[0].cnpj:k),
+      cnpjRaiz:k.length===8?k:(efd?efd.cnpjRaiz:k.substring(0,8)),
+      nome:efd?efd.nome:'',uf:efd?efd.uf:'',periodo:efd?efd.periodo:'',
+      declarado,pago602,dif,status,
+      vlRetencao:efd?efd.vlRetencao:0,vlCredAnt:efd?efd.vlCredAnt:0,
+      vlCredTran:efd?efd.vlCredTran:0,vlOr:efd?efd.vlOr:0,
+      pago110:pag?pag.cod110:0,pago604:pag?pag.cod604:0,
+      pagTotal:pag?pag.total:0,pagOutros:pag?pag.outros:0
+    });
+  });
+  oieResultados.sort((a,b)=>{
+    const ord={sem_pagto:0,divergente_menor:1,divergente_maior:2,proximo:3,so_pagou:4,regular:5};
+    const o=(ord[a.status]||9)-(ord[b.status]||9);
+    if(o!==0)return o;
+    // Dentro do mesmo status: maior valor primeiro
+    if(a.status==='sem_pagto') return b.declarado-a.declarado;
+    if(a.status==='divergente_menor') return b.dif-a.dif;
+    if(a.status==='divergente_maior') return a.dif-b.dif;
+    return b.declarado-a.declarado;
+  });
+  oieStatusFiltro='todos';oiePagina=1;
+  oieRender();
+}
+
+function oieRender(){
+  const el=document.getElementById('oie-results');
+  if(!oieResultados.length){el.innerHTML='';return;}
+  const counts={};
+  oieResultados.forEach(r=>{counts[r.status]=(counts[r.status]||0)+1;});
+  const nReg=counts.regular||0;
+  const nSem=counts.sem_pagto||0;
+  const nDivMenor=counts.divergente_menor||0;
+  const nDivMaior=counts.divergente_maior||0;
+  const nProx=counts.proximo||0;
+  const nSoPagou=counts.so_pagou||0;
+  const totalDecl=oieResultados.reduce((s,r)=>s+r.declarado,0);
+  const totalPago=oieResultados.reduce((s,r)=>s+r.pago602,0);
+  const totalSemPagto=oieResultados.filter(r=>r.status==='sem_pagto').reduce((s,r)=>s+r.declarado,0);
+  const totalDivMenor=oieResultados.filter(r=>r.status==='divergente_menor').reduce((s,r)=>s+r.dif,0);
+  const totalCobrar=totalSemPagto+totalDivMenor;
+
+  let h='';
+  // KPIs
+  h+='<div class="cards-grid" style="grid-template-columns:repeat(4,1fr)">';
+  h+='<div class="card"><div class="card-head"><div class="card-icon blue">📊</div>Empresas</div>';
+  h+='<div class="card-row"><span class="label">Na EFD (OIE)</span><span class="value">'+new Set(oieEFDData.map(r=>r.cnpj)).size+'</span></div>';
+  h+='<div class="card-row"><span class="label">Nos pagamentos</span><span class="value">'+new Set(oiePagData.map(r=>r.cnpj)).size+'</span></div>';
+  h+='<div class="card-row"><span class="label">Cruzados</span><span class="value big">'+oieResultados.length+'</span></div></div>';
+  h+='<div class="card"><div class="card-head"><div class="card-icon green">✅</div>Regulares</div>';
+  h+='<div class="card-row"><span class="label">Match exato</span><span class="value" style="color:var(--success);font-weight:800">'+nReg+'</span></div>';
+  if(nProx) h+='<div class="card-row"><span class="label">Próximo (< R$100)</span><span class="value">'+nProx+'</span></div>';
+  h+='<div class="card-row"><span class="label">Taxa de match</span><span class="value">'+(oieResultados.length?(nReg/oieResultados.length*100).toFixed(0):0)+'%</span></div></div>';
+  h+='<div class="card"><div class="card-head"><div class="card-icon amber">⚠</div>Divergentes</div>';
+  h+='<div class="card-row"><span class="label">Pagou a menos</span><span class="value" style="color:var(--danger)">'+nDivMenor+'</span></div>';
+  h+='<div class="card-row"><span class="label">Pagou a mais</span><span class="value" style="color:#2563eb">'+nDivMaior+'</span></div>';
+  h+='<div class="card-row"><span class="label">Dif. a cobrar</span><span class="value" style="color:var(--danger);font-weight:800">R$ '+fmt(totalDivMenor)+'</span></div></div>';
+  h+='<div class="card"><div class="card-head"><div class="card-icon red">❌</div>Sem pagamento</div>';
+  h+='<div class="card-row"><span class="label">Empresas</span><span class="value" style="color:var(--danger);font-weight:800">'+nSem+'</span></div>';
+  h+='<div class="card-row"><span class="label">Valor total</span><span class="value" style="color:var(--danger);font-weight:800">R$ '+fmt(totalSemPagto)+'</span></div></div>';
+  h+='</div>';
+  h+='<div class="total-bar"><div><div class="lbl">Total a cobrar</div><div class="val">R$ '+fmt(totalCobrar)+'</div></div><div class="badge">'+(nSem+nDivMenor)+' empresas com pendência</div></div>';
+
+  // Chips
+  h+='<div class="quick-filters" style="margin:16px 0"><div class="chip-group">';
+  const chips=[
+    {k:'todos',l:'Todos',n:oieResultados.length},
+    {k:'sem_pagto',l:'❌ Sem pagto',n:nSem},
+    {k:'diverg',l:'⚠ Divergentes',n:nDivMenor+nDivMaior},
+    {k:'regular',l:'✅ Regulares',n:nReg+nProx},
+  ];
+  if(nSoPagou)chips.push({k:'so_pagou',l:'🟢 Só pagou',n:nSoPagou});
+  chips.forEach(c=>{
+    h+='<div class="chip '+(oieStatusFiltro===c.k?'active':'')+'" onclick="oieStatusFiltro=\''+c.k+'\';oiePagina=1;oieRender()">'+c.l+'<span class="count">'+c.n+'</span></div>';
+  });
+  h+='</div></div>';
+
+  // Filter
+  let filtered=oieResultados;
+  if(oieStatusFiltro==='sem_pagto') filtered=filtered.filter(r=>r.status==='sem_pagto');
+  else if(oieStatusFiltro==='diverg') filtered=filtered.filter(r=>r.status==='divergente_menor'||r.status==='divergente_maior');
+  else if(oieStatusFiltro==='regular') filtered=filtered.filter(r=>r.status==='regular'||r.status==='proximo');
+  else if(oieStatusFiltro==='so_pagou') filtered=filtered.filter(r=>r.status==='so_pagou');
+
+  // Search — preserve value across renders
+  const prevSearch=(document.getElementById('oie-search')||{}).value||'';
+  h+='<div style="margin-bottom:12px;display:flex;gap:12px;align-items:center">';
+  h+='<input type="text" id="oie-search" value="'+prevSearch.replace(/"/g,'&quot;')+'" placeholder="Buscar CNPJ ou empresa..." style="flex:1;padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-size:13px" oninput="oiePagina=1;oieRender()">';
+  h+='<button class="btn btn-primary" onclick="oieExportar()" style="font-size:12px;padding:8px 16px">⬇ Excel</button>';
+  h+='</div>';
+
+  if(prevSearch){
+    const s=prevSearch.toLowerCase();
+    filtered=filtered.filter(r=>r.cnpj.includes(s)||r.nome.toLowerCase().includes(s));
+  }
+
+  // Pagination
+  const totalPgs=Math.ceil(filtered.length/OIE_PER_PAGE);
+  const start=(oiePagina-1)*OIE_PER_PAGE;
+  const page=filtered.slice(start,start+OIE_PER_PAGE);
+
+  // Table
+  h+='<div class="table-card" style="margin-top:8px;overflow:visible"><table class="mon-table"><thead><tr>';
+  h+='<th style="width:30px"></th><th>Status</th><th>CNPJ</th><th>Empresa</th><th>UF</th>';
+  h+='<th style="text-align:right">Declarado (EFD)</th><th style="text-align:right">Pago (602)</th>';
+  h+='<th style="text-align:right">Diferença</th></tr></thead><tbody>';
+  page.forEach((r,i)=>{
+    const gi=start+i;
+    const stPill=r.status==='regular'||r.status==='proximo'?'<span class="status-pill ok">✅ OK</span>':
+      r.status==='sem_pagto'?'<span class="status-pill irreg">❌ SEM</span>':
+      r.status==='divergente_menor'?'<span class="status-pill irreg">⚠ DIV−</span>':
+      r.status==='divergente_maior'?'<span class="status-pill ok" style="background:#dbeafe;color:#1d4ed8">ℹ DIV+</span>':
+      r.status==='so_pagou'?'<span class="status-pill ok" style="background:#dcfce7;color:#166534">🟢 SÓ PAG</span>':'';
+    const difColor=Math.abs(r.dif)<1?'#94a3b8':r.dif>0?'#b91c1c':'#2563eb';
+    const difTxt=r.status==='sem_pagto'?'<span style="color:#b91c1c;font-weight:700">R$ '+fmt(r.declarado)+'</span>':
+      '<span style="color:'+difColor+';font-weight:'+(Math.abs(r.dif)>100?'700':'400')+'">'+(r.dif>0?'+':'')+' R$ '+fmt(r.dif)+'</span>';
+    const fmtCNPJ=r.cnpj.length===14?r.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5'):r.cnpj;
+    h+='<tr class="main" onclick="oieToggleDetail('+gi+')" id="oie-row-'+gi+'" style="cursor:pointer;border-bottom:1px solid var(--border)'+(i%2?';background:#fafbfc':'')+'">';
+    h+='<td><span class="expand-arrow" id="oie-arrow-'+gi+'">▶</span></td>';
+    h+='<td>'+stPill+'</td>';
+    h+='<td class="mono" style="font-size:11px">'+fmtCNPJ+'</td>';
+    h+='<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(r.nome||'')+'">'+r.nome+'</td>';
+    h+='<td><b>'+r.uf+'</b></td>';
+    h+='<td class="mono" style="text-align:right">R$ '+fmt(r.declarado)+'</td>';
+    h+='<td class="mono" style="text-align:right">'+(r.pago602>0?'R$ '+fmt(r.pago602):'—')+'</td>';
+    h+='<td style="text-align:right">'+difTxt+'</td></tr>';
+    // Detail row (hidden)
+    h+='<tr id="oie-detail-'+gi+'" style="display:none"><td colspan="8" style="padding:0;background:#f8fafc;border-bottom:2px solid var(--primary)">';
+    h+='<div style="padding:14px 20px">';
+    h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">';
+    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:700">VL_RETENCAO_ST</div><div style="font-size:14px;font-weight:700;color:var(--text)">R$ '+fmt(r.vlRetencao)+'</div></div>';
+    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:700">VL_ICMS_RECOL_ST</div><div style="font-size:14px;font-weight:700;color:var(--text)">R$ '+fmt(r.declarado)+'</div></div>';
+    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:700">Saldo credor ant.</div><div style="font-size:14px;font-weight:700;color:var(--text)">R$ '+fmt(r.vlCredAnt)+'</div></div>';
+    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:700">Saldo cred. transp.</div><div style="font-size:14px;font-weight:700;color:var(--text)">R$ '+fmt(r.vlCredTran)+'</div></div>';
+    h+='</div>';
+    // Pagamentos detalhados
+    h+='<div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Pagamentos</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">';
+    h+='<div style="background:'+(r.pago602>0?'#f0fdf4':'#fef2f2')+';border:1px solid '+(r.pago602>0?'#bbf7d0':'#fecaca')+';border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Cod 602 (ST Saída)</div><div style="font-size:14px;font-weight:700">'+(r.pago602>0?'R$ '+fmt(r.pago602):'—')+'</div></div>';
+    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Cod 604 (DIFAL)</div><div style="font-size:14px;font-weight:700">'+(r.pago604>0?'R$ '+fmt(r.pago604):'—')+'</div></div>';
+    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Cod 110 (FUMACOP)</div><div style="font-size:14px;font-weight:700">'+(r.pago110>0?'R$ '+fmt(r.pago110):'—')+'</div></div>';
+    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Outros</div><div style="font-size:14px;font-weight:700">'+(r.pagOutros>0?'R$ '+fmt(r.pagOutros):'—')+'</div></div>';
+    h+='</div>';
+    if(r.status!=='regular'&&r.status!=='proximo'){
+      const difAbs=Math.abs(r.dif);
+      const difBg=r.dif>0?'#fef2f2':'#eff6ff';
+      const difBrd=r.dif>0?'#fecaca':'#bfdbfe';
+      const difClr=r.dif>0?'#b91c1c':'#1d4ed8';
+      h+='<div style="margin-top:12px;padding:10px 14px;background:'+difBg+';border:1px solid '+difBrd+';border-radius:8px;text-align:center">';
+      h+='<div style="font-size:10px;color:'+difClr+';font-weight:700;text-transform:uppercase">Divergência ST</div>';
+      h+='<div style="font-size:18px;font-weight:800;color:'+difClr+'">'+(r.dif>0?'+':'')+'R$ '+fmt(r.dif)+'</div></div>';
+    }
+    h+='</div></td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  // Pagination
+  if(totalPgs>1){
+    h+='<div style="display:flex;justify-content:center;gap:6px;margin-top:14px">';
+    for(let p=1;p<=totalPgs;p++){
+      if(totalPgs>10&&Math.abs(p-oiePagina)>3&&p!==1&&p!==totalPgs){if(p===2||p===totalPgs-1)h+='<span style="padding:6px">…</span>';continue;}
+      h+='<button onclick="oiePagina='+p+';oieRender()" style="padding:6px 12px;border:1px solid '+(p===oiePagina?'var(--primary)':'var(--border)')+';border-radius:6px;background:'+(p===oiePagina?'var(--primary)':'var(--surface)')+';color:'+(p===oiePagina?'#fff':'var(--text)')+';cursor:pointer;font-size:12px;font-weight:'+(p===oiePagina?'700':'400')+'">'+p+'</button>';
+    }
+    h+='</div>';
+  }
+
+  // Resumo por UF (colapsável)
+  const ufRes={};
+  oieResultados.forEach(r=>{
+    const u=r.uf||'?';
+    if(!ufRes[u])ufRes[u]={n:0,decl:0,pago:0,sem:0};
+    ufRes[u].n++;ufRes[u].decl+=r.declarado;ufRes[u].pago+=r.pago602;
+    if(r.status==='sem_pagto')ufRes[u].sem++;
+  });
+  const ufKeys=Object.keys(ufRes).sort((a,b)=>ufRes[b].decl-ufRes[a].decl);
+  h+='<div style="margin:16px 0"><div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:8px 14px;background:#f1f5f9;border-radius:8px;font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:6px"><span>▶</span> Resumo por UF</div>';
+  h+='<div style="display:none"><table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:0 0 8px 8px;overflow:hidden">';
+  h+='<thead><tr style="background:#f1f5f9"><th style="padding:8px 12px;text-align:left">UF</th><th style="text-align:center">Empresas</th><th style="text-align:center">Sem pagto</th><th style="text-align:right;padding:8px 12px">Declarado</th><th style="text-align:right;padding:8px 12px">Pago (602)</th><th style="text-align:right;padding:8px 12px">Diferença</th></tr></thead><tbody>';
+  ufKeys.forEach((u,i)=>{
+    const g=ufRes[u];const dif=g.decl-g.pago;
+    h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:6px 12px;font-weight:700">'+u+'</td><td style="text-align:center">'+g.n+'</td><td style="text-align:center;color:#b91c1c;font-weight:700">'+(g.sem||'—')+'</td><td style="text-align:right;padding:6px 12px">R$ '+fmt(g.decl)+'</td><td style="text-align:right;padding:6px 12px">R$ '+fmt(g.pago)+'</td><td style="text-align:right;padding:6px 12px;color:'+(dif>100?'#b91c1c':'#166534')+';font-weight:700">'+(dif>0?'+':'')+'R$ '+fmt(dif)+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+
+  el.innerHTML=h;
+  if(prevSearch){const si=document.getElementById('oie-search');if(si){si.focus();si.setSelectionRange(si.value.length,si.value.length);}}
+}
+
+function oieToggleDetail(i){
+  const d=document.getElementById('oie-detail-'+i);
+  const a=document.getElementById('oie-arrow-'+i);
+  if(d){const open=d.style.display==='none';d.style.display=open?'table-row':'none';if(a)a.textContent=open?'▼':'▶';}
+}
+
+async function oieExportar(){
+  if(!oieResultados.length){alert('Execute o cruzamento primeiro');return;}
+  const wb=new ExcelJS.Workbook();const hoje=new Date().toISOString().substring(0,10);
+  const hd=['Status','CNPJ','Empresa','UF','Período','VL_RETENCAO_ST','VL_ICMS_RECOL_ST','Pago Cod 602','Diferença','Pago Cod 604','Pago Cod 110','Pago Total'];
+  const statusLabel={regular:'Regular',proximo:'Próximo',sem_pagto:'SEM PAGAMENTO',divergente_menor:'DIVERGENTE (pagou menos)',divergente_maior:'Divergente (pagou mais)',so_pagou:'Só pagou'};
+  // Aba Sem Pagamento
+  const sem=oieResultados.filter(r=>r.status==='sem_pagto');
+  if(sem.length){
+    const ws=wb.addWorksheet('Sem Pagamento',{views:[{state:'frozen',ySplit:3}]});
+    xlTitle(ws,'❌ EMPRESAS SEM PAGAMENTO — OIE × ARRECADAÇÃO',hd.length,1);
+    xlSubtitle(ws,sem.length+' empresas · Total R$ '+fmt(sem.reduce((s,r)=>s+r.declarado,0)),hd.length,2);
+    xlHeaderRow(ws,hd,3);
+    sem.forEach((r,i)=>{const z=i%2===1;xlDataRow(ws,[statusLabel[r.status],r.cnpj,r.nome,r.uf,r.periodo,r.vlRetencao,r.declarado,r.pago602,r.dif,r.pago604,r.pago110,r.pagTotal],4+i,z);});
+    xlAutoWidth(ws,[20,18,40,5,12,16,16,16,16,16,16,16]);
+    ws.autoFilter={from:{row:3,column:1},to:{row:3+sem.length,column:hd.length}};
+  }
+  // Aba Divergentes
+  const divg=oieResultados.filter(r=>r.status==='divergente_menor'||r.status==='divergente_maior');
+  if(divg.length){
+    const ws=wb.addWorksheet('Divergentes',{views:[{state:'frozen',ySplit:3}]});
+    xlTitle(ws,'⚠ DIVERGÊNCIAS — OIE × ARRECADAÇÃO',hd.length,1);
+    xlSubtitle(ws,divg.length+' empresas',hd.length,2);
+    xlHeaderRow(ws,hd,3);
+    divg.forEach((r,i)=>{const z=i%2===1;xlDataRow(ws,[statusLabel[r.status],r.cnpj,r.nome,r.uf,r.periodo,r.vlRetencao,r.declarado,r.pago602,r.dif,r.pago604,r.pago110,r.pagTotal],4+i,z);});
+    xlAutoWidth(ws,[20,18,40,5,12,16,16,16,16,16,16,16]);
+    ws.autoFilter={from:{row:3,column:1},to:{row:3+divg.length,column:hd.length}};
+  }
+  // Aba Completo
+  const ws=wb.addWorksheet('Completo',{views:[{state:'frozen',ySplit:3}]});
+  xlTitle(ws,'📊 CRUZAMENTO COMPLETO — OIE × ARRECADAÇÃO',hd.length,1);
+  xlSubtitle(ws,oieResultados.length+' empresas · '+hoje,hd.length,2);
+  xlHeaderRow(ws,hd,3);
+  oieResultados.forEach((r,i)=>{const z=i%2===1;xlDataRow(ws,[statusLabel[r.status],r.cnpj,r.nome,r.uf,r.periodo,r.vlRetencao,r.declarado,r.pago602,r.dif,r.pago604,r.pago110,r.pagTotal],4+i,z);});
+  xlAutoWidth(ws,[20,18,40,5,12,16,16,16,16,16,16,16]);
+  ws.autoFilter={from:{row:3,column:1},to:{row:3+oieResultados.length,column:hd.length}};
+  await xlSave(wb,'OIE_cruzamento_'+hoje+'.xlsx');
 }
 
 </script></body></html>

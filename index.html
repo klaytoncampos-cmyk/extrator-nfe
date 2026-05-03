@@ -2448,6 +2448,41 @@ async function exportarPA(){
     {k:'Tolerância',v:'R$ 0,50 para arredondamentos'},
   ]);
 
+  // Aba Lançamento — resumo por período para lançamento fiscal
+  {
+    const lancMap={};
+    paResultados.forEach(r=>{
+      if(r.status!=='sem'&&!(r.status==='diverg'&&r.diferenca>0))return;
+      const d=r.data||'';
+      const mes=d.length>=7?d.substring(5,7)+'/'+d.substring(0,4):'?';
+      if(!lancMap[mes])lancMap[mes]={periodo:mes,sortKey:d.substring(0,7),qtd:0,stDevido:0};
+      lancMap[mes].qtd++;
+      lancMap[mes].stDevido+=(r.status==='sem'?(r.icmsSTCorreto||0):(r.diferenca||0));
+    });
+    const lancList=Object.values(lancMap).sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+    if(lancList.length>0){
+      const ws=wb.addWorksheet('Lançamento',{views:[{state:'frozen',ySplit:4}]});
+      const hd=['Período','Qtd NF-e','ICMS-ST Devido'];
+      xlTitle(ws,'📋 LANÇAMENTO POR PERÍODO — ICMS-ST',hd.length,1);
+      xlSubtitle(ws,lancList.length+' período(s) · Gerado em '+hoje,hd.length,2);
+      ws.getRow(3).height=4;
+      xlHeaderRow(ws,hd,4);
+      let totalQtd=0,totalST=0;
+      lancList.forEach((l,i)=>{
+        const rn=5+i;const z=i%2===1;
+        xlDataRow(ws,[l.periodo,l.qtd,r2(l.stDevido)],rn,z);
+        xlMoneyCell(ws.getCell(rn,3),z);
+        totalQtd+=l.qtd;totalST+=l.stDevido;
+      });
+      const rn=5+lancList.length;
+      xlDataRow(ws,['TOTAL',totalQtd,r2(totalST)],rn,false);
+      ws.getRow(rn).font={bold:true,size:11};
+      xlMoneyCell(ws.getCell(rn,3),false);
+      ws.getCell(rn,3).font={bold:true,size:11,color:{argb:'FFB91C1C'}};
+      xlAutoWidth(ws,[14,10,18]);
+    }
+  }
+
   await xlSave(wb,'pre_auditoria_icmsst_'+hoje+'.xlsx');
 }
 
@@ -3509,6 +3544,49 @@ async function exportarPAVeiculos(){
     {k:'IPI 6 a 8,99%',v:'86,36%'},{k:'IPI 9 a 11,99%',v:'86,96%'},{k:'IPI ≥12%',v:'88,24%'},
   ]);
 
+  // Aba Lançamento — resumo por período para lançamento fiscal
+  {
+    const lancMap={};
+    resultados.forEach(r=>{
+      const divST=r.divergenciaST||0;
+      const fumaDevido=r.fumacopAplicavel?Math.max(0,(r.vfcpstEsperado||0)-(r.vFCPSTDecl||0)):0;
+      if(divST<=5&&fumaDevido<=0)return;
+      const d=r.data||'';
+      const mes=d.length>=7?d.substring(5,7)+'/'+d.substring(0,4):'?';
+      if(!lancMap[mes])lancMap[mes]={periodo:mes,sortKey:d.substring(0,7),qtd:0,stDevido:0,fumaDevido:0};
+      lancMap[mes].qtd++;
+      if(divST>5)lancMap[mes].stDevido+=divST;
+      lancMap[mes].fumaDevido+=fumaDevido;
+    });
+    const lancList=Object.values(lancMap).sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+    const temFumacop=lancList.some(l=>l.fumaDevido>0);
+    if(lancList.length>0){
+      const hd=temFumacop?['Período','Qtd NF-e','ICMS-ST Devido','FUMACOP Devido']:['Período','Qtd NF-e','ICMS-ST Devido'];
+      const ws=wb.addWorksheet('Lançamento',{views:[{state:'frozen',ySplit:4}]});
+      xlTitle(ws,'📋 LANÇAMENTO POR PERÍODO — VEÍCULOS',hd.length,1);
+      xlSubtitle(ws,lancList.length+' período(s) · Gerado em '+hoje,hd.length,2);
+      ws.getRow(3).height=4;
+      xlHeaderRow(ws,hd,4);
+      let totalQtd=0,totalST=0,totalFuma=0;
+      lancList.forEach((l,i)=>{
+        const rn=5+i;const z=i%2===1;
+        const row=temFumacop?[l.periodo,l.qtd,r2(l.stDevido),r2(l.fumaDevido)]:[l.periodo,l.qtd,r2(l.stDevido)];
+        xlDataRow(ws,row,rn,z);
+        xlMoneyCell(ws.getCell(rn,3),z);
+        if(temFumacop)xlMoneyCell(ws.getCell(rn,4),z);
+        totalQtd+=l.qtd;totalST+=l.stDevido;totalFuma+=l.fumaDevido;
+      });
+      const rn=5+lancList.length;
+      const totalRow=temFumacop?['TOTAL',totalQtd,r2(totalST),r2(totalFuma)]:['TOTAL',totalQtd,r2(totalST)];
+      xlDataRow(ws,totalRow,rn,false);
+      ws.getRow(rn).font={bold:true,size:11};
+      xlMoneyCell(ws.getCell(rn,3),false);
+      ws.getCell(rn,3).font={bold:true,size:11,color:{argb:'FFB91C1C'}};
+      if(temFumacop){xlMoneyCell(ws.getCell(rn,4),false);ws.getCell(rn,4).font={bold:true,size:11,color:{argb:'FFEA580C'}};}
+      xlAutoWidth(ws,temFumacop?[14,10,18,18]:[14,10,18]);
+    }
+  }
+
   await xlSave(wb,'pre_auditoria_veiculos_'+hoje+'.xlsx');
 }
 
@@ -3770,6 +3848,43 @@ async function exportarPACelulares(){
   });
   xlAutoWidth(ws,[14,10,10,6,48,6,16,30,6,6,40,12,12,6,4,14,12,14,8,8,10,14,14,14,14,14,14,8,8,10,50]);
   ws.autoFilter={from:{row:4,column:1},to:{row:4+resultados.length,column:hd.length}};}
+
+  // Aba Lançamento — resumo por período para lançamento fiscal
+  {
+    const lancMap={};
+    paCelResultados.forEach(r=>{
+      if(r.isDevolucao||r.isUsado)return;
+      if(r.status!=='sem'&&!(r.status==='diverg'&&r.diferenca>0))return;
+      const d=r.data||'';
+      const mes=d.length>=7?d.substring(5,7)+'/'+d.substring(0,4):'?';
+      if(!lancMap[mes])lancMap[mes]={periodo:mes,sortKey:d.substring(0,7),qtd:0,stDevido:0};
+      lancMap[mes].qtd++;
+      lancMap[mes].stDevido+=(r.status==='sem'?(r.icmsSTCorreto||0):(r.diferenca||0));
+    });
+    const lancList=Object.values(lancMap).sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+    if(lancList.length>0){
+      const ws=wb.addWorksheet('Lançamento',{views:[{state:'frozen',ySplit:4}]});
+      const hd=['Período','Qtd NF-e','ICMS-ST Devido'];
+      xlTitle(ws,'📋 LANÇAMENTO POR PERÍODO — CELULARES',hd.length,1);
+      xlSubtitle(ws,lancList.length+' período(s) · Gerado em '+hoje,hd.length,2);
+      ws.getRow(3).height=4;
+      xlHeaderRow(ws,hd,4);
+      const r2=v=>typeof v==='number'?Math.round(v*100)/100:v;
+      let totalQtd=0,totalST=0;
+      lancList.forEach((l,i)=>{
+        const rn=5+i;const z=i%2===1;
+        xlDataRow(ws,[l.periodo,l.qtd,r2(l.stDevido)],rn,z);
+        xlMoneyCell(ws.getCell(rn,3),z);
+        totalQtd+=l.qtd;totalST+=l.stDevido;
+      });
+      const rn=5+lancList.length;
+      xlDataRow(ws,['TOTAL',totalQtd,r2(totalST)],rn,false);
+      ws.getRow(rn).font={bold:true,size:11};
+      xlMoneyCell(ws.getCell(rn,3),false);
+      ws.getCell(rn,3).font={bold:true,size:11,color:{argb:'FFB91C1C'}};
+      xlAutoWidth(ws,[14,10,18]);
+    }
+  }
 
   await xlSave(wb,'pre_auditoria_celulares_'+hoje+'.xlsx');
 }

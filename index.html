@@ -2248,6 +2248,8 @@ function limparPA(){
 
 async function exportarPA(){
   if(!paResultados.length){alert('Execute a pré-auditoria primeiro.');return;}
+  // Threshold: acima de 25k itens usa SheetJS (mais rápido, sem formatação)
+  if(paResultados.length>25000){exportarPAFast();return;}
   const wb=new ExcelJS.Workbook();const hoje=new Date().toISOString().substring(0,10);
   const r2=v=>typeof v==='number'?Math.round(v*100)/100:v;
 
@@ -2484,6 +2486,86 @@ async function exportarPA(){
   }
 
   await xlSave(wb,'pre_auditoria_icmsst_'+hoje+'.xlsx');
+}
+
+/* Helper: aba Metodologia formatada */
+
+function exportarPAFast(){
+  // Exportação rápida via SheetJS para grandes volumes (>25k itens)
+  const hoje=new Date().toISOString().substring(0,10);
+  const r2=v=>typeof v==='number'?Math.round(v*100)/100:v;
+  const wb=XLSX.utils.book_new();
+
+  // Aba 1: Sem Retenção
+  const semR=paResultados.filter(r=>r.status==='sem');
+  {
+    const hd=['Segmento','Período','NF-e','Série','Chave','UF Orig','CNPJ Emitente','Emitente',
+      'CNPJ/CPF Dest.','Destinatário','UF Dest.','CRT','Regime',
+      'Item','Cód.Produto','Descrição','NCM','CEST','CFOP','Devolução',
+      'Vl.Produto','Desc.Inc.','IPI Item','Frete Rat.','Seguro Rat.','Outros Rat.','Base Pré-MVA',
+      'ALQ Inter','ALQ Intra','MVA Correta','BC-ST Calculada','ICMS Próprio','ICMS-ST Devido',
+      'Match CEST','Match NCM','Alertas'];
+    const rows=[['⚠ ITENS SEM RETENÇÃO ICMS-ST — '+semR.length+' item(ns) · '+hoje],[],hd];
+    semR.forEach(r=>{
+      const segLbl=(r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça')+(r.forcado?' (incl. manual)':'');
+      rows.push([segLbl,r.data,r.numero,r.serie,r.chave,r.ufEmit,r.emitCNPJ,r.emitNome,
+        r.destDoc||'',r.destNome||'',r.destUF||'',r.emitCRT,r.regime,
+        r.nitem,r.cProd,r.xProd,r.NCM,r.CEST,r.CFOP,r.isDevolucao?'Sim':'Não',
+        r2(r.vProd),r2(r.vDescItem||0),r2(r.ipiItem),r2(r.freteRat),r2(r.seguroRat),r2(r.outrosRat),r2(r.basePreMVA),
+        r2(r.aliqInter),r2(r.aliqIntra),r2(r.mvaCorreta),r2(r.bcSTCorreta),r2(r.icmsProprioCorreto),r2(r.icmsSTCorreto),
+        r.matchCEST?'Sim':'Não',r.matchNCM?'Sim':'Não',(r.alertas||[]).join(' | ')]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:2,c:0},e:{r:2+semR.length,c:hd.length-1}})};
+    XLSX.utils.book_append_sheet(wb,ws,'Sem Retenção ST');
+  }
+
+  // Aba 2: Verificação ST
+  const comR=paResultados.filter(r=>r.status!=='sem');
+  {
+    const hd=['Segmento','Período','NF-e','Chave','UF Orig','Emitente',
+      'CNPJ/CPF Dest.','Destinatário','UF Dest.','Regime','Status','Devolução',
+      'Item','Descrição','NCM','CEST','CFOP','Vl.Produto','BC-ST Declarada','ST Declarado',
+      'MVA Usada','MVA Correta','BC-ST Correta','ST Correto','Diferença','Alertas'];
+    const rows=[['🔎 VERIFICAÇÃO ICMS-ST (MVA) — '+comR.length+' item(ns) · '+hoje],[],hd];
+    comR.forEach(r=>{
+      const segLbl=(r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça')+(r.forcado?' (incl. manual)':'');
+      rows.push([segLbl,r.data,r.numero,r.chave,r.ufEmit,r.emitNome,
+        r.destDoc||'',r.destNome||'',r.destUF||'',r.regime,r.status==='ok'?'OK':'DIVERGENTE',r.isDevolucao?'Sim':'Não',
+        r.nitem,r.xProd,r.NCM,r.CEST,r.CFOP,
+        r2(r.vProd),r2(r.bcSTDeclarado),r2(r.stDeclarado),
+        r.mvaUsada!==null?r2(r.mvaUsada):'',r2(r.mvaCorreta),
+        r2(r.bcSTCorreta),r2(r.icmsSTCorreto),r2(r.diferenca),(r.alertas||[]).join(' | ')]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:2,c:0},e:{r:2+comR.length,c:hd.length-1}})};
+    XLSX.utils.book_append_sheet(wb,ws,'Verificação ST');
+  }
+
+  // Aba Lançamento
+  {
+    const lancMap={};
+    paResultados.forEach(r=>{
+      if(r.status!=='sem'&&!(r.status==='diverg'&&r.diferenca>0))return;
+      const d=r.data||'';
+      const mes=d.length>=7?d.substring(5,7)+'/'+d.substring(0,4):'?';
+      if(!lancMap[mes])lancMap[mes]={periodo:mes,sortKey:d.substring(0,7),qtd:0,stDevido:0};
+      lancMap[mes].qtd++;
+      lancMap[mes].stDevido+=(r.status==='sem'?(r.icmsSTCorreto||0):(r.diferenca||0));
+    });
+    const lancList=Object.values(lancMap).sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+    if(lancList.length>0){
+      const rows=[['📋 LANÇAMENTO POR PERÍODO — ICMS-ST'],[],['Período','Qtd NF-e','ICMS-ST Devido']];
+      let totalQtd=0,totalST=0;
+      lancList.forEach(l=>{rows.push([l.periodo,l.qtd,r2(l.stDevido)]);totalQtd+=l.qtd;totalST+=l.stDevido;});
+      rows.push(['TOTAL',totalQtd,r2(totalST)]);
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb,ws,'Lançamento');
+    }
+  }
+
+  XLSX.writeFile(wb,'pre_auditoria_icmsst_'+hoje+'.xlsx',{compression:true});
+  toast('📥 pre_auditoria_icmsst_'+hoje+'.xlsx exportado (modo rápido)','success');
 }
 
 /* Helper: aba Metodologia formatada */
@@ -5913,6 +5995,7 @@ const EFD_STATE={
   efdFiles:[],
   dimpFiles:[], // Array de arquivos DIMP carregados
   dimpParsed:[], // Array de resultados parseados
+  dimpNat4Mode:'excluir', // Como tratar NAT 4 do 1500/1100 ("Transf. Recursos" — direção ambígua): 'excluir' | 'entrada' | 'saida'
   efdData:[],
   dimpData:null,
   empresa:null,
@@ -6073,9 +6156,11 @@ const EFD_DIMP_ALIASES={
   cnpj_estab:['cnpj do estabelecimento credenciado, ou do importador (comex)','cnpj do estabelecimento'],
   periodo:['periodo a que se referem as transacoes consolidadas (aaaamm)','periodo da operacao','periodo'],
   nome_inst:['nome empresarial (razao social/denominacao) da instituicao','nome empresarial','instituicao'],
+  cnpj_adqui:['cnpj da operadora de cartao','cnpj_adqui','cnpj da adquirente'],
+  cod_cliente:['codigo do cliente','cod_cliente'],
   natureza:['natureza da operacao','nat_oper_1115','natureza'],
   valor:['valor total das operacoes','valor_1115','valor'],
-  qtd_ops:['quantidade de operacoes'],
+  qtd_ops:['quantidade de operacoes','quantidade'],
   ind_pix:['indicador de tipo de pix','ind_pix'],
 };
 function detectDimpLayout(headerRow){
@@ -6095,31 +6180,57 @@ async function parseDIMP(file){
   if(rows.length<2)return{fileName:file.name,tipo:'VAZIO',registros:[]};
   const{tipo,colMap}=detectDimpLayout(rows[0]);
   if(colMap.natureza===undefined||colMap.valor===undefined)return{fileName:file.name,tipo:'DESCONHECIDO',registros:[]};
+  // Heurística para coluna "Quantidade" lixo no 1500: se já temos qtd_ops via "quantidade de operacoes",
+  // qualquer "quantidade" pura pega depois é descartada (mantém só o primeiro match exato)
+  const hdrNorm=rows[0].map(h=>normHeader(h));
+  if(colMap.qtd_ops!==undefined){
+    const idxQtdOps=colMap.qtd_ops;
+    if(hdrNorm[idxQtdOps]!=='quantidade de operacoes'){
+      // Prefere "quantidade de operacoes" se existir em outra coluna
+      const idxPref=hdrNorm.indexOf('quantidade de operacoes');
+      if(idxPref!==-1)colMap.qtd_ops=idxPref;
+    }
+  }
   const get=(row,campo)=>{const idx=colMap[campo];return(idx===undefined)?null:row[idx];};
+  const padCNPJ=v=>{const d=String(v||'').replace(/\D/g,'');return d?d.padStart(14,'0'):'';};
   const registros=[];
   for(let i=1;i<rows.length;i++){
     const r=rows[i];if(!r||r.every(v=>v==null))continue;
     const periodo=parseInt(get(r,'periodo'));if(!periodo)continue;
     const indPixRaw=get(r,'ind_pix');
-    registros.push({cnpj_estab:String(get(r,'cnpj_estab')||'').replace(/\D/g,''),periodo,nome_inst:get(r,'nome_inst'),natureza:parseInt(get(r,'natureza'))||0,valor:efdNum(get(r,'valor')),qtd_ops:parseInt(get(r,'qtd_ops'))||0,ind_pix:(indPixRaw==null||indPixRaw==='')?-1:parseInt(indPixRaw)});
+    registros.push({
+      cnpj_estab:padCNPJ(get(r,'cnpj_estab')),
+      cnpj_adqui:padCNPJ(get(r,'cnpj_adqui')),
+      cod_cliente:String(get(r,'cod_cliente')||'').trim(),
+      periodo,
+      nome_inst:get(r,'nome_inst'),
+      natureza:parseInt(get(r,'natureza'))||0,
+      valor:efdNum(get(r,'valor')),
+      qtd_ops:parseInt(get(r,'qtd_ops'))||0,
+      ind_pix:(indPixRaw==null||indPixRaw==='')?-1:parseInt(indPixRaw)
+    });
   }
   return{fileName:file.name,tipo,registros};
 }
 function classificaDimp(reg){
   const n=reg.natureza;const t=reg.tipo_dimp||'1100';
+  // Modo de tratamento da NAT 4 ("Transferência de Recursos" — direção ambígua)
+  // Default: 'excluir' do cruzamento (mais correto); outras opções: 'entrada', 'saida'
+  const nat4Mode=(typeof EFD_STATE!=='undefined'&&EFD_STATE.dimpNat4Mode)||'excluir';
   if(t==='1100'){
-    // Instituições de Pagamento (Cielo, Rede, Stone...)
+    // Instituições de Pagamento / Adquirentes (Cielo, Rede, Stone, Mercado Pago...)
     switch(n){
-      case 1:return'entrada'; // Cartão Crédito
-      case 2:return'entrada'; // Cartão Débito
-      case 3:return'entrada'; // Boleto de transações próprias
-      case 4:return'saida';   // Cancelamento/Estorno
-      case 5:return'entrada'; // Dinheiro (pagamento em dinheiro registrado na IP)
-      case 6:return(reg.ind_pix===1)?'entrada':'saida'; // PIX recebido/enviado
-      case 7:return'entrada'; // Voucher
-      case 8:return'saida';   // Saque em estabelecimento
+      case 1:return'entrada'; // Crédito (cartão de crédito)
+      case 2:return'entrada'; // Débito (cartão de débito)
+      case 3:return'entrada'; // Boleto de transações próprias (boleto pago)
+      case 4: // Transferência de Recursos — direção ambígua
+        return nat4Mode==='entrada'?'entrada':nat4Mode==='saida'?'saida':'ignorar';
+      case 5:return'entrada'; // Pagamento em dinheiro / outra estrutura (recebido pelo vendedor)
+      case 6:return(reg.ind_pix===1)?'entrada':'saida'; // PIX recebido / enviado
+      case 7:return'entrada'; // Voucher (recebido pelo vendedor)
+      case 8:return'saida';   // Saque em estabelecimento (cashback — saída do caixa)
       case 10:return'entrada'; // Depósito
-      case 11:return'entrada'; // Boletos de terceiros
+      case 11:return'entrada'; // Recepção de pagamento de boletos de terceiros
       default:return'ignorar';
     }
   } else {
@@ -6127,26 +6238,52 @@ function classificaDimp(reg){
     switch(n){
       case 1:return'entrada'; // Crédito em conta
       case 2:return'saida';   // Débito em conta
-      case 3:return'entrada'; // TED/Crédito recebido
-      case 4:return'saida';   // TED/Débito enviado
-      case 6:return(reg.ind_pix===1)?'entrada':'saida'; // PIX recebido/enviado
-      case 7:return'saida';   // Aluguel POS/tarifas
+      case 3:return'entrada'; // Boleto de transações próprias (boletos pagos pelos clientes do contribuinte)
+      case 4: // Transferência de Recursos — direção ambígua
+        return nat4Mode==='entrada'?'entrada':nat4Mode==='saida'?'saida':'ignorar';
+      case 5:return'entrada'; // Pagamento em dinheiro / outra estrutura
+      case 6:return(reg.ind_pix===1)?'entrada':'saida'; // PIX recebido / enviado
+      case 7:return'saida';   // Voucher (genérico — saída de caixa para banco)
+      case 8:return'saida';   // Saque em estabelecimento
       case 10:return'entrada'; // Depósito
+      case 11:return'entrada'; // Recepção de pagamento de boletos de terceiros
       default:return'ignorar';
     }
   }
 }
 function labelNatDimp(reg){
   const n=reg.natureza;const t=reg.tipo_dimp||'1100';
-  if(t==='1100'){
-    const m={1:'Cartão Crédito',2:'Cartão Débito',3:'Boleto Próprio',4:'Cancelamento/Estorno',5:'Dinheiro',7:'Voucher',8:'Saque',10:'Depósito',11:'Boleto Terceiros'};
-    if(n===6) return reg.ind_pix===1?'PIX Recebido':'PIX Enviado';
-    return m[n]||'Nat. '+n;
-  } else {
-    const m={1:'Crédito em conta',2:'Débito em conta',3:'TED Crédito',4:'TED Débito',7:'Tarifa/Aluguel POS',10:'Depósito'};
-    if(n===6) return reg.ind_pix===1?'PIX Recebido':'PIX Enviado';
-    return m[n]||'Nat. '+n;
-  }
+  // Labels oficiais conforme Manual DIMP Leiaute v7 (Registro 1115, campo 09)
+  if(n===6) return reg.ind_pix===1?'PIX Recebido':reg.ind_pix===0?'PIX Enviado':'PIX (sem ind.)';
+  const m={
+    1:'Crédito',
+    2:'Débito',
+    3:'Boleto de transações próprias',
+    4:'Transferência de Recursos',
+    5:'Pagamento em dinheiro / outra estrutura',
+    7:'Voucher',
+    8:'Saque em estabelecimento comercial',
+    10:'Depósito',
+    11:'Recepção de boletos / guias de terceiros'
+  };
+  return m[n]||'Natureza '+n+' (não prevista)';
+}
+// Texto oficial completo do manual v7 — para tooltips e abas de metodologia
+function natOperOficial(n){
+  const m={
+    1:'Crédito (cartão de crédito ou crédito em conta)',
+    2:'Débito (cartão de débito ou débito em conta)',
+    3:'Boleto de transações próprias — boletos pagos, conforme data de pagamento',
+    4:'Transferência de Recursos (genérico — desde 11/2021 PIX é separado em natureza 6)',
+    5:'Pagamento efetuado em dinheiro ou por outra estrutura',
+    6:'PIX (válido para arquivos enviados a partir de 11/2021)',
+    7:'Voucher',
+    8:'Saque em estabelecimento comercial (cashback)',
+    9:'Outros (válido apenas para arquivos enviados até 11/2021)',
+    10:'Depósito',
+    11:'Recepção de pagamento de boletos, guias emitidos por terceiros e recargas de celular'
+  };
+  return m[n]||'Código não previsto no leiaute';
 }
 function consolidateDimp(parsedList){
   const byComp={};const todosRegistros=[];const fontes=[];
@@ -6162,6 +6299,26 @@ function consolidateDimp(parsedList){
     }
   }
   return{byComp,registros:todosRegistros,fontes};
+}
+// Recalcula entradas/saidas usando o modo NAT 4 atual (sem reparsear arquivos)
+function reconsolidateDimp(){
+  if(!EFD_STATE.dimpData)return;
+  const dimp=EFD_STATE.dimpData;
+  Object.values(dimp.byComp).forEach(b=>{b.entradas=0;b.saidas=0;});
+  dimp.registros.forEach(r=>{
+    const b=dimp.byComp[r.periodo];if(!b)return;
+    const cls=classificaDimp(r);
+    if(cls==='entrada')b.entradas+=r.valor;else if(cls==='saida')b.saidas+=r.valor;
+  });
+}
+// Toggle do modo NAT 4 — reconsolida e re-renderiza
+function efdSetNat4Mode(mode){
+  if(!['excluir','entrada','saida'].includes(mode))return;
+  EFD_STATE.dimpNat4Mode=mode;
+  reconsolidateDimp();
+  efdGerarAlertas();
+  efdRenderTab();
+  if(typeof toast==='function')toast('Modo NAT 4 alterado: '+(mode==='excluir'?'Excluída do cruzamento':mode==='entrada'?'Tratada como entrada':'Tratada como saída'),'info');
 }
 
 /* --- Consolidação EFD --- */
@@ -6365,26 +6522,195 @@ async function efdExportarDimp(){
   if(!EFD_STATE.dimpData||!EFD_STATE.consolidated)return;
   const con=EFD_STATE.consolidated;const dimp=EFD_STATE.dimpData;
   const r2=v=>(+(+v||0).toFixed(2));
+  const fmtCNPJ=v=>{const d=String(v||'').replace(/\D/g,'').padStart(14,'0');return d.length===14?d.slice(0,2)+'.'+d.slice(2,5)+'.'+d.slice(5,8)+'/'+d.slice(8,12)+'-'+d.slice(12,14):d;};
+  const fmtPeriodo=k=>{const s=String(k);return s.length>=6?s.slice(4,6)+'/'+s.slice(0,4):s;};
   const allComps=Object.keys(con.porComp).sort();const dimpComps=Object.keys(dimp.byComp).sort();
   const allPeriods=[...new Set([...allComps,...dimpComps])].sort();
   const anos=[...new Set(allPeriods.map(k=>String(k).slice(0,4)))].sort();
   const wb=XLSX.utils.book_new();
-  const res=[['CRUZAMENTO DIMP × EFD — RESUMO'],['Empresa: '+(EFD_STATE.empresa?.nome||''),'CNPJ: '+(EFD_STATE.empresa?.cnpj||'')],[],['Ano','EFD Vendas','DIMP Entradas','Razão','Excedente','Meses Críticos']];
+  const nat4Mode=EFD_STATE.dimpNat4Mode||'excluir';
+  const nat4ModeLbl=nat4Mode==='excluir'?'Excluída do cruzamento':nat4Mode==='entrada'?'Tratada como entrada':'Tratada como saída';
+
+  // ── Aba 1: Resumo ──
+  const res=[['CRUZAMENTO DIMP × EFD — RESUMO'],['Empresa: '+(EFD_STATE.empresa?.nome||''),'CNPJ: '+(EFD_STATE.empresa?.cnpj||'')],['NAT 4 (Transf. Recursos): '+nat4ModeLbl],[],['Ano','EFD Vendas','DIMP Entradas','Razão','Excedente','Meses Críticos']];
   let gE=0,gD=0,gC=0;
   anos.forEach(a=>{const ap=allPeriods.filter(k=>String(k).startsWith(a));let ae=0,ad=0,ac=0;ap.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;ae+=e;ad+=d;if(e>0&&d/e>1.5)ac++;});gE+=ae;gD+=ad;gC+=ac;res.push([a,r2(ae),r2(ad),ae>0?r2(ad/ae):0,r2(ad-ae),ac]);});
   res.push(['TOTAL',r2(gE),r2(gD),gE>0?r2(gD/gE):0,r2(gD-gE),gC]);
   const ws1=XLSX.utils.aoa_to_sheet(res);wb.SheetNames.push('Resumo');wb.Sheets['Resumo']=ws1;
+
+  // ── Aba 2: Detalhe Mensal ──
   const det=[['Período','EFD Vendas','DIMP Entradas','Razão','Excedente','Status']];
-  allPeriods.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;const rz=e>0?(d/e):0;det.push([String(k).slice(4,6)+'/'+String(k).slice(0,4),r2(e),r2(d),r2(rz),r2(d-e),e>0&&d===0?'S/ DIMP':rz>2?'ALTO':rz>1.5?'MÉDIO':'OK']);});
+  allPeriods.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;const rz=e>0?(d/e):0;det.push([fmtPeriodo(k),r2(e),r2(d),r2(rz),r2(d-e),e>0&&d===0?'S/ DIMP':rz>2?'ALTO':rz>1.5?'MÉDIO':'OK']);});
   const ws2=XLSX.utils.aoa_to_sheet(det);wb.SheetNames.push('Detalhe Mensal');wb.Sheets['Detalhe Mensal']=ws2;
-  const brk=[['Meio/Natureza','Tipo DIMP','Classificação','Valor','Qtd']];
-  const nt={};dimp.registros.forEach(r=>{const l=labelNatDimp(r);const c=classificaDimp(r);const t=r.tipo_dimp||'1100';if(!nt[l])nt[l]={v:0,q:0,c,t};nt[l].v+=r.valor;nt[l].q++;});
-  Object.keys(nt).sort((a,b)=>nt[b].v-nt[a].v).forEach(k=>{const v=nt[k];brk.push([k,v.t==='1500'?'IF (Banco)':'IP (Adquirente)',v.c==='entrada'?'Entrada':'Saída',r2(v.v),v.q]);});
+
+  // ── Aba 3: Breakdown DIMP (enriquecida) ──
+  const brk=[['Cód. NAT_OPER','Natureza (label oficial)','Tipo DIMP','Classificação','Valor','Qtd','% do total']];
+  const nt={};
+  dimp.registros.forEach(r=>{
+    const key=(r.tipo_dimp||'1100')+'|'+r.natureza+'|'+(r.natureza===6?r.ind_pix:'-');
+    if(!nt[key])nt[key]={cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),tipo:r.tipo_dimp||'1100',v:0,q:0};
+    nt[key].v+=r.valor;nt[key].q++;
+  });
+  const totBrk=Object.values(nt).reduce((s,v)=>s+v.v,0);
+  Object.keys(nt).sort((a,b)=>nt[b].v-nt[a].v).forEach(k=>{
+    const v=nt[k];
+    const codDisp=v.cod===6?(v.ind_pix===1?'6 (Recebido)':v.ind_pix===0?'6 (Enviado)':'6'):v.cod;
+    const clsLbl=v.cls==='entrada'?'Entrada':v.cls==='saida'?'Saída':'Ignorada';
+    const tipoLbl=v.tipo==='1500'?'IF (Banco)':'IP (Adquirente)';
+    brk.push([codDisp,v.lbl,tipoLbl,clsLbl,r2(v.v),v.q,totBrk>0?r2(v.v/totBrk*100):0]);
+  });
   const ws3=XLSX.utils.aoa_to_sheet(brk);wb.SheetNames.push('Breakdown DIMP');wb.Sheets['Breakdown DIMP']=ws3;
+
+  // ── Aba 4: Diagnóstico Naturezas (mostra TUDO, inclusive ignoradas) ──
+  const diag=[
+    ['DIAGNÓSTICO DE NATUREZAS — Manual DIMP Leiaute v7 (Reg. 1115, campo 09)'],
+    [],
+    ['Cód.','Descrição oficial','Tipo','Tem no arquivo?','Valor','Qtd','Direção (Radar ST)','Observação']
+  ];
+  // Naturezas observadas no arquivo, agrupadas por (tipo, código)
+  const obsKey={};
+  dimp.registros.forEach(r=>{
+    const k=(r.tipo_dimp||'1100')+'|'+r.natureza;
+    if(!obsKey[k])obsKey[k]={tipo:r.tipo_dimp||'1100',cod:r.natureza,valor:0,qtd:0,cls:classificaDimp(r)};
+    obsKey[k].valor+=r.valor;obsKey[k].qtd++;
+  });
+  // Linhas: para cada combinação (tipo × código 1..11), informar status
+  const codigos=[1,2,3,4,5,6,7,8,10,11];
+  const tipos=[['1100','IP (Adquirente)'],['1500','IF (Banco)']];
+  tipos.forEach(([tp,tpLbl])=>{
+    codigos.forEach(c=>{
+      const k=tp+'|'+c;const o=obsKey[k];
+      const desc=natOperOficial(c);
+      const presente=o?'Sim':'Não';
+      const valor=o?r2(o.valor):0;
+      const qtd=o?o.qtd:0;
+      const cls=o?(o.cls==='entrada'?'Entrada':o.cls==='saida'?'Saída':'Ignorada (sem direção definida)'):'—';
+      let obs='';
+      if(c===4&&o)obs='Modo atual: '+nat4ModeLbl;
+      if(c===6&&o)obs='Separado por ind_pix (0=enviado, 1=recebido)';
+      if(!o&&[5,8,11].includes(c))obs='Pode estar sendo descartada na origem — verificar extrator';
+      diag.push([c,desc,tpLbl,presente,valor,qtd,cls,obs]);
+    });
+  });
+  const ws4=XLSX.utils.aoa_to_sheet(diag);wb.SheetNames.push('Diagnóstico Naturezas');wb.Sheets['Diagnóstico Naturezas']=ws4;
+
+  // ── Aba 5: Cobertura por Instituição (matriz instituição × período) ──
+  const cobInst={};const cobPer=new Set();
+  dimp.registros.forEach(r=>{
+    const nome=(r.nome_inst||'(sem nome)').trim();
+    const tp=r.tipo_dimp==='1500'?'IF':'IP';
+    const key=tp+' · '+nome;
+    if(!cobInst[key])cobInst[key]={};
+    if(!cobInst[key][r.periodo])cobInst[key][r.periodo]=0;
+    cobInst[key][r.periodo]+=r.valor;
+    cobPer.add(r.periodo);
+  });
+  const cobPerArr=[...cobPer].sort();
+  const cob=[['COBERTURA POR INSTITUIÇÃO REPORTANTE × PERÍODO'],[],['Instituição','Períodos com dados','Total reportado',...cobPerArr.map(fmtPeriodo)]];
+  Object.keys(cobInst).sort().forEach(inst=>{
+    const periodos=cobInst[inst];
+    const qtdPer=Object.keys(periodos).length;
+    const total=Object.values(periodos).reduce((s,v)=>s+v,0);
+    const linha=[inst,qtdPer,r2(total)];
+    cobPerArr.forEach(p=>{linha.push(periodos[p]?r2(periodos[p]):'');});
+    cob.push(linha);
+  });
+  const ws5=XLSX.utils.aoa_to_sheet(cob);wb.SheetNames.push('Cobertura Instituições');wb.Sheets['Cobertura Instituições']=ws5;
+
+  // ── Aba 6: Concentração por Adquirente (CNPJ_ADQUI) ──
+  const concMap={};
+  dimp.registros.forEach(r=>{
+    if(classificaDimp(r)!=='entrada')return;
+    const cnpj=r.cnpj_adqui||'(não informado)';
+    if(!concMap[cnpj])concMap[cnpj]={cnpj,nomes:new Set(),tipos:new Set(),valor:0,qtd:0};
+    concMap[cnpj].valor+=r.valor;concMap[cnpj].qtd++;
+    if(r.nome_inst)concMap[cnpj].nomes.add(String(r.nome_inst).trim());
+    concMap[cnpj].tipos.add(r.tipo_dimp||'1100');
+  });
+  const concArr=Object.values(concMap).sort((a,b)=>b.valor-a.valor);
+  const totConc=concArr.reduce((s,v)=>s+v.valor,0);
+  const conc=[['CONCENTRAÇÃO POR ADQUIRENTE / LIQUIDANTE (CNPJ_ADQUI)'],['Considera apenas registros classificados como entrada · Modo NAT 4: '+nat4ModeLbl],[],['CNPJ Adquirente','Nome(s) reportado(s)','Tipo','Valor','% do total','Qtd ops']];
+  concArr.forEach(c=>{
+    conc.push([fmtCNPJ(c.cnpj),[...c.nomes].join(' / '),[...c.tipos].map(t=>t==='1500'?'IF':'IP').join('+'),r2(c.valor),totConc>0?r2(c.valor/totConc*100):0,c.qtd]);
+  });
+  const ws6=XLSX.utils.aoa_to_sheet(conc);wb.SheetNames.push('Concentração Adquirente');wb.Sheets['Concentração Adquirente']=ws6;
+
+  // ── Aba 7: Alertas ──
   const alr=[['Período','EFD Vendas','DIMP Entradas','Razão','Excedente','Tipo Alerta']];
-  allPeriods.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;const rz=e>0?(d/e):0;if(rz>1.5||(e>0&&d===0))alr.push([String(k).slice(4,6)+'/'+String(k).slice(0,4),r2(e),r2(d),r2(rz),r2(d-e),e>0&&d===0?'Sem DIMP':rz>2?'Razão > 2×':'Razão > 1.5×']);});
-  const ws4=XLSX.utils.aoa_to_sheet(alr);wb.SheetNames.push('Alertas');wb.Sheets['Alertas']=ws4;
-  XLSX.writeFile(wb,'dimp_efd_cruzamento.xlsx');
+  allPeriods.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;const rz=e>0?(d/e):0;if(rz>1.5||(e>0&&d===0))alr.push([fmtPeriodo(k),r2(e),r2(d),r2(rz),r2(d-e),e>0&&d===0?'Sem DIMP':rz>2?'Razão > 2×':'Razão > 1.5×']);});
+  const ws7=XLSX.utils.aoa_to_sheet(alr);wb.SheetNames.push('Alertas');wb.Sheets['Alertas']=ws7;
+
+  // ── Aba 8: Metodologia DIMP v7 ──
+  const met=[
+    ['METODOLOGIA — Cruzamento DIMP × EFD ICMS/IPI'],
+    [],
+    ['1. LEIAUTE DE REFERÊNCIA'],
+    ['Manual DIMP — Leiaute Versão 07 (Ato COTEPE/ICMS), vigência a partir de 01/11/2021'],
+    ['Convênio ICMS 134/2016 — institui a obrigação acessória'],
+    [],
+    ['2. NATUREZAS DA OPERAÇÃO (Registro 1115, campo 09)'],
+    ['Cód.','Descrição oficial'],
+    ...codigos.map(c=>[c,natOperOficial(c)]),
+    [9,'Outros (válido apenas para arquivos enviados até 11/2021 — não esperado em arquivos atuais)'],
+    [],
+    ['3. TIPOS DE REPORTANTE'],
+    ['IP — Instituição de Pagamento / Adquirente: Cielo, Rede, Stone, Mercado Pago, etc. (transações de cartão e intermediação)'],
+    ['IF — Instituição Financeira (Banco): BB, Bradesco, Caixa, Itaú, etc. (transações em conta corrente)'],
+    [],
+    ['4. TRATAMENTO DA NATUREZA 4 — TRANSFERÊNCIA DE RECURSOS'],
+    ['A NAT 4 é genérica e direção-ambígua: pode representar TED entrada, TED saída, transferência interbancária recebida ou enviada.'],
+    ['Sem informação adicional (ind_pix só vale para NAT 6), o Radar ST oferece três modos:'],
+    ['  • Excluir do cruzamento — default conservador (mais correto tecnicamente)'],
+    ['  • Tratar como entrada — presunção a favor do fisco'],
+    ['  • Tratar como saída — comportamento legado (NÃO recomendado por defaultear como TED Débito)'],
+    ['Modo aplicado neste relatório: '+nat4ModeLbl],
+    [],
+    ['5. LIMITES DE NÃO-REPORTE — PESSOAS FÍSICAS (Manual p. 23, 70-71)'],
+    ['Transações de PF com valor mensal < R$ 3.375,00 OU quantidade < 30 ops/mês não são reportadas.'],
+    ['Ambos os limites devem ser ultrapassados simultaneamente para que a transação apareça na DIMP.'],
+    ['Não afeta contribuintes PJ.'],
+    [],
+    ['6. OPERAÇÕES JÁ EXCLUÍDAS NA ORIGEM PELAS INSTITUIÇÕES (Manual p. 23, 70-71)'],
+    ['Tudo que está na DIMP já passou pelo seguinte filtro de exclusão:'],
+    ['  a) Transferências entre mesma titularidade ou mesmo grupo empresarial (mesma raiz CNPJ)'],
+    ['  b) Benefícios previdenciários, pensões'],
+    ['  c) Transações de natureza salarial'],
+    ['  d) Benefícios sociais e de órgãos públicos'],
+    ['  e) Empréstimos e financiamentos creditados'],
+    ['  f) Liquidações via SLC/CIP'],
+    ['  g) Transferências para órgãos públicos'],
+    ['  h) Contas de instituições financeiras (exceto adquirentes)'],
+    ['  i) Conta-salário'],
+    ['  j) Condomínios'],
+    ['  k) PLR e dividendos'],
+    ['  l) Restituição de IR'],
+    ['  m) Indenizações judiciais, seguros, previdenciárias'],
+    ['  n) Resgate de aplicação financeira'],
+    ['  o) Cashbacks e programas de incentivo'],
+    ['  p) Doações de leis de incentivo'],
+    ['  q) Créditos de câmbio sem operação de venda'],
+    ['  r) Estornos de tarifas'],
+    ['Implicação: hipóteses não-tributárias clássicas (transferências entre contas próprias, empréstimos, devoluções) já foram excluídas na origem pelas instituições reportantes — não cabem como justificativa do contribuinte.'],
+    [],
+    ['7. INDICADOR DE TIPO DE PIX (campo ind_pix)'],
+    ['Campo presente apenas em arquivos do tipo IF (1500), valores 0 (enviado) e 1 (recebido).'],
+    ['Não é campo padronizado pelo leiaute v7 — assumption do extrator/SEFAZ-MA. Os totais consistentes nos arquivos analisados sustentam a interpretação.'],
+    [],
+    ['8. METODOLOGIA DE CRUZAMENTO'],
+    ['• EFD Vendas: somatório de C100/C190 com CFOP de saída tributável (5xxx, 6xxx, 7xxx) por competência'],
+    ['• DIMP Entradas: somatório dos registros classificados como entrada por natureza (ver Diagnóstico Naturezas)'],
+    ['• Razão DIMP/EFD = DIMP Entradas ÷ EFD Vendas. Razão > 1,5× indica indício de omissão de receita.'],
+    ['• Excedente = DIMP Entradas − EFD Vendas. Valor positivo → movimento financeiro maior que o faturamento declarado.'],
+    [],
+    ['9. FUNDAMENTAÇÃO LEGAL'],
+    ['• Convênio ICMS 134/2016'],
+    ['• Ato COTEPE/ICMS — Manual DIMP v7 (vigência 01/11/2021)'],
+    ['• Lei Estadual MA 7.799/2002, art. 46 — presunção de fato gerador quando movimento real tributável > declarado']
+  ];
+  const ws8=XLSX.utils.aoa_to_sheet(met);wb.SheetNames.push('Metodologia DIMP');wb.Sheets['Metodologia DIMP']=ws8;
+
+  XLSX.writeFile(wb,'dimp_efd_cruzamento.xlsx',{compression:true});
+  if(typeof toast==='function')toast('📥 dimp_efd_cruzamento.xlsx exportado (8 abas)','success');
 }
 function efdLaudoDimp(){
   if(!EFD_STATE.dimpData||!EFD_STATE.consolidated)return;
@@ -6406,12 +6732,66 @@ function efdLaudoDimp(){
   t+='\n2. RESUMO POR ANO\n'+'─'.repeat(30)+'\n';
   anos.forEach(a=>{const ap=allPeriods.filter(k=>String(k).startsWith(a));let ae=0,ad=0;ap.forEach(k=>{ae+=(con.porComp[k]?con.porComp[k].vl_venda:0);ad+=(dimp.byComp[k]?dimp.byComp[k].entradas:0);});t+=a+': EFD R$ '+ff(ae)+' | DIMP R$ '+ff(ad)+' | Razão '+(ae>0?(ad/ae).toFixed(2):'0.00')+'× | Excedente R$ '+ff(ad-ae)+'\n';});
   if(top3.length){t+='\n3. PERÍODOS MAIS CRÍTICOS\n'+'─'.repeat(30)+'\n';top3.forEach((m,i)=>{const s=String(m.k);t+=(i+1)+'. '+s.slice(4,6)+'/'+s.slice(0,4)+': DIMP R$ '+ff(m.d)+' × EFD R$ '+ff(m.e)+' = '+m.r.toFixed(2)+'× (excedente R$ '+ff(m.d-m.e)+')\n';});}
-  t+='\n4. FUNDAMENTAÇÃO LEGAL\n'+'─'.repeat(30)+'\n';
-  t+='A DIMP (Declaração de Informações de Meios de Pagamento) foi instituída pelo Convênio ICMS 134/2016 e regulamentada pelo Ato COTEPE/ICMS 65/2018. A divergência entre o volume financeiro movimentado (DIMP) e o faturamento declarado (EFD ICMS/IPI) configura indício de omissão de receita, nos termos do art. 46 da Lei Estadual 7.799/2002, que presume ocorrido o fato gerador quando constatado que o movimento real tributável foi superior ao declarado pelo contribuinte.\n';
+
+  // 4. Naturezas presentes
+  const natAgg={};
+  dimp.registros.forEach(r=>{
+    const k=(r.tipo_dimp||'1100')+'|'+r.natureza+'|'+(r.natureza===6?r.ind_pix:'-');
+    if(!natAgg[k])natAgg[k]={tipo:r.tipo_dimp||'1100',cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),valor:0,qtd:0};
+    natAgg[k].valor+=r.valor;natAgg[k].qtd++;
+  });
+  const natList=Object.values(natAgg).sort((a,b)=>b.valor-a.valor);
+  if(natList.length){
+    t+='\n4. NATUREZAS PRESENTES (Manual DIMP Leiaute v7, Reg. 1115)\n'+'─'.repeat(30)+'\n';
+    natList.forEach(v=>{
+      const codDisp=v.cod===6?(v.ind_pix===1?'6/R':v.ind_pix===0?'6/E':'6'):v.cod;
+      const tipo=v.tipo==='1500'?'IF':'IP';
+      const cls=v.cls==='entrada'?'Entrada':v.cls==='saida'?'Saída':'Ignorada';
+      t+='Cód. '+codDisp+' ('+tipo+') — '+v.lbl+': R$ '+ff(v.valor)+' em '+v.qtd+' op. ['+cls+']\n';
+    });
+    const nat4Mode=EFD_STATE.dimpNat4Mode||'excluir';
+    const hasNat4=natList.some(v=>v.cod===4);
+    if(hasNat4){
+      t+='Nota: NAT 4 (Transferência de Recursos) tratada como: '+(nat4Mode==='excluir'?'EXCLUÍDA do cruzamento':nat4Mode==='entrada'?'ENTRADA (presunção a favor do fisco)':'SAÍDA (modo legado)')+'.\n';
+    }
+  }
+
+  t+='\n5. FUNDAMENTAÇÃO LEGAL E METODOLÓGICA\n'+'─'.repeat(30)+'\n';
+  t+='A DIMP (Declaração de Informações de Meios de Pagamento) foi instituída pelo Convênio ICMS 134/2016 e regulamentada por Ato COTEPE/ICMS, sendo a versão 07 do leiaute vigente desde 01/11/2021.\n\n';
+  t+='As informações são prestadas mensalmente pelas instituições financeiras, de pagamento e intermediadores de serviços e negócios, e contemplam transações com cartões de crédito, débito, cartões de loja, PIX, boletos, transferências de recursos e demais instrumentos eletrônicos de pagamento.\n\n';
+  t+='Conforme o próprio leiaute (Manual DIMP v7, p. 23 e 70-71), as instituições reportantes JÁ EXCLUEM na origem as seguintes operações: transferências entre mesma raiz CNPJ, salários e benefícios previdenciários, empréstimos e financiamentos, liquidações via SLC/CIP, transferências para órgãos públicos, dividendos e PLR, restituição de IR, indenizações judiciais, resgates de aplicação financeira, cashbacks, doações de incentivo, créditos de câmbio sem operação de venda, estornos de tarifas, conta-salário e condomínios. As entradas reportadas na DIMP, portanto, têm presunção robusta de corresponder a movimentação comercial.\n\n';
+  t+='A divergência entre o volume financeiro movimentado (DIMP entradas) e o faturamento declarado (EFD ICMS/IPI saídas tributáveis) configura indício de omissão de receita, nos termos do art. 46 da Lei Estadual MA 7.799/2002, que presume ocorrido o fato gerador quando constatado que o movimento real tributável foi superior ao declarado pelo contribuinte.\n';
   const modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.onclick=e=>{if(e.target===modal)modal.remove();};
-  modal.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:16px;font-weight:700">📋 Laudo DIMP × EFD</span><div style="display:flex;gap:6px"><button onclick="navigator.clipboard.writeText(this.closest(\'div\').parentElement.querySelector(\'pre\').textContent).then(()=>this.textContent=\'✓ Copiado\')" style="padding:6px 16px;background:#1e3a8a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">📋 Copiar</button><button onclick="this.closest(\'[style*=fixed]\').remove()" style="padding:6px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:11px">✕</button></div></div><pre style="font-family:Consolas,monospace;font-size:11px;white-space:pre-wrap;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;line-height:1.5">'+t.replace(/</g,'&lt;')+'</pre></div>';
+  modal.innerHTML='<div style="background:#fff;border-radius:12px;padding:24px;max-width:700px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span style="font-size:16px;font-weight:700">📋 Laudo DIMP × EFD</span><div style="display:flex;gap:6px"><button id="dimp-laudo-copy-btn" onclick="efdCopiarLaudoDimp(this)" style="padding:6px 16px;background:#1e3a8a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">📋 Copiar</button><button onclick="this.closest(\'[style*=fixed]\').remove()" style="padding:6px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:11px">✕</button></div></div><pre id="dimp-laudo-pre" style="font-family:Consolas,monospace;font-size:11px;white-space:pre-wrap;background:#f8fafc;padding:16px;border-radius:8px;border:1px solid #e2e8f0;line-height:1.5">'+t.replace(/</g,'&lt;')+'</pre></div>';
   document.body.appendChild(modal);
+}
+// Cópia do laudo DIMP — com fallback para arquivos abertos via file:// (onde navigator.clipboard pode falhar)
+function efdCopiarLaudoDimp(btn){
+  const pre=document.getElementById('dimp-laudo-pre');
+  if(!pre)return;
+  const txt=pre.textContent;
+  const ok=()=>{btn.textContent='✓ Copiado';btn.style.background='#166534';setTimeout(()=>{btn.textContent='📋 Copiar';btn.style.background='#1e3a8a';},2000);if(typeof toast==='function')toast('📋 Laudo copiado','success');};
+  const fail=()=>{btn.textContent='✗ Falha — selecione manualmente';btn.style.background='#b91c1c';setTimeout(()=>{btn.textContent='📋 Copiar';btn.style.background='#1e3a8a';},3000);};
+  // Tenta API moderna primeiro
+  if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(txt).then(ok).catch(()=>tryLegacy(pre,ok,fail));
+  } else {
+    tryLegacy(pre,ok,fail);
+  }
+}
+function tryLegacy(pre,ok,fail){
+  // Fallback: cria textarea temporária e usa execCommand
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=pre.textContent;
+    ta.style.cssText='position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();ta.setSelectionRange(0,ta.value.length);
+    const sucesso=document.execCommand('copy');
+    document.body.removeChild(ta);
+    sucesso?ok():fail();
+  }catch(e){fail();}
 }
 function efdVerDocsParticipante(codPart){
   EFD_STATE.tabAtual='documentos';EFD_STATE.docFiltro='todos';EFD_STATE.docBusca=codPart;EFD_STATE.docPagina=1;
@@ -7143,27 +7523,71 @@ function efdRenderTab(){
       h+='</tbody></table>';
     }
     
-    // Breakdown por natureza
+    // Breakdown por natureza — versão enriquecida (com código, classificação oficial, ignoradas)
     const dimpRegs=EFD_STATE.dimpAnoFiltro==='todos'?dimp.registros:dimp.registros.filter(r=>String(r.periodo).startsWith(EFD_STATE.dimpAnoFiltro));
-    const natTotals={};
+
+    // Toggle NAT 4 — controla classificação de "Transferência de Recursos"
+    const nat4Mode=EFD_STATE.dimpNat4Mode||'excluir';
+    const hasNat4=dimpRegs.some(r=>r.natureza===4);
+    if(hasNat4){
+      h+='<div style="margin-bottom:12px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
+      h+='<span style="font-size:11px;font-weight:700;color:#92400e">⚖️ NAT 4 — Transferência de Recursos:</span>';
+      h+='<span style="font-size:11px;color:#78350f;flex:1;min-width:200px">Direção ambígua sem outros dados. Como tratar?</span>';
+      const opts=[['excluir','Excluir do cruzamento','Default conservador'],['entrada','Tratar como entrada','Presunção a favor do fisco'],['saida','Tratar como saída','Comportamento legado']];
+      opts.forEach(([val,lbl,hint])=>{
+        const sel=nat4Mode===val;
+        h+='<button onclick="efdSetNat4Mode(\''+val+'\')" title="'+hint+'" style="padding:4px 10px;border:1px solid '+(sel?'#92400e':'#fde68a')+';background:'+(sel?'#92400e':'#fff')+';color:'+(sel?'#fff':'#92400e')+';border-radius:5px;cursor:pointer;font-size:10px;font-weight:'+(sel?'700':'600')+'">'+lbl+'</button>';
+      });
+      h+='</div>';
+    }
+
+    // Diagnóstico de naturezas — agrupa por (tipo, código, ind_pix) e mostra TUDO, inclusive ignoradas
+    const natDiag={};
     dimpRegs.forEach(r=>{
-      const lbl=labelNatDimp(r);const cls=classificaDimp(r);
-      if(!natTotals[lbl])natTotals[lbl]={valor:0,qtd:0,cls};
-      natTotals[lbl].valor+=r.valor;natTotals[lbl].qtd++;
+      const key=(r.tipo_dimp||'1100')+'|'+r.natureza+'|'+(r.natureza===6?r.ind_pix:'-');
+      if(!natDiag[key])natDiag[key]={tipo:r.tipo_dimp||'1100',cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),valor:0,qtd:0};
+      natDiag[key].valor+=r.valor;natDiag[key].qtd++;
     });
-    const natKeys=Object.keys(natTotals).sort((a,b)=>natTotals[b].valor-natTotals[a].valor);
+    const natKeys=Object.keys(natDiag).sort((a,b)=>natDiag[b].valor-natDiag[a].valor);
     if(natKeys.length){
-      const anoLbl=EFD_STATE.dimpAnoFiltro==='todos'?'':'— '+EFD_STATE.dimpAnoFiltro;
-      h+='<div style="font-size:12px;font-weight:700;margin-bottom:6px">Breakdown por natureza/meio '+anoLbl+'</div>';
-      const totNat=natKeys.reduce((s,k)=>s+natTotals[k].valor,0);
-      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;margin-bottom:20px"><thead><tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Meio</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">%</th><th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Classificação</th></tr></thead><tbody>';
+      const anoLbl=EFD_STATE.dimpAnoFiltro==='todos'?'':' — '+EFD_STATE.dimpAnoFiltro;
+      const totNat=natKeys.reduce((s,k)=>s+natDiag[k].valor,0);
+      const ignoradas=natKeys.filter(k=>natDiag[k].cls==='ignorar');
+      const totIgn=ignoradas.reduce((s,k)=>s+natDiag[k].valor,0);
+      h+='<div style="font-size:12px;font-weight:700;margin-bottom:6px">📊 Diagnóstico de naturezas'+anoLbl+'</div>';
+      if(ignoradas.length){
+        h+='<div style="font-size:10px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-bottom:6px">⚠ <b>'+ignoradas.length+' natureza(s)</b> sem direção definida — R$ '+f(totIgn)+' ('+(totNat>0?(totIgn/totNat*100).toFixed(1):'0')+'% do volume)</div>';
+      }
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;margin-bottom:20px"><thead><tr style="background:#f1f5f9">';
+      h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Cód.</th>';
+      h+='<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Natureza (label oficial)</th>';
+      h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Tipo</th>';
+      h+='<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th>';
+      h+='<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Qtd</th>';
+      h+='<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">%</th>';
+      h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Classificação</th>';
+      h+='</tr></thead><tbody>';
       natKeys.forEach((k,i)=>{
-        const v=natTotals[k];const pct=totNat>0?((v.valor/totNat)*100):0;
-        const clsBadge=v.cls==='entrada'?'📥 Entrada':v.cls==='saida'?'📤 Saída':'❓';
-        const clsCor=v.cls==='entrada'?'#166534':'#b91c1c';
-        h+='<tr style="border-top:1px solid #f1f5f9;'+(i%2?'background:#fafbfc':'')+'"><td style="padding:5px 8px;font-weight:600">'+k+'</td><td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(v.valor)+'</td><td style="padding:5px 8px;text-align:right;font-size:11px;color:#64748b">'+pct.toFixed(1)+'%</td><td style="padding:5px 8px;text-align:right;color:'+clsCor+';font-weight:600;font-size:11px">'+clsBadge+'</td></tr>';
+        const v=natDiag[k];const pct=totNat>0?((v.valor/totNat)*100):0;
+        const clsBadge=v.cls==='entrada'?'📥 Entrada':v.cls==='saida'?'📤 Saída':'⊘ Ignorada';
+        const clsCor=v.cls==='entrada'?'#166534':v.cls==='saida'?'#b91c1c':'#92400e';
+        const tipoLbl=v.tipo==='1500'?'IF':'IP';
+        const tipoTitle=v.tipo==='1500'?'Instituição Financeira (Banco)':'Instituição de Pagamento (Adquirente)';
+        const codDisp=v.cod===6?(v.ind_pix===1?'6/R':v.ind_pix===0?'6/E':'6'):v.cod;
+        const tooltipOficial=natOperOficial(v.cod).replace(/"/g,'&quot;');
+        const rowBg=v.cls==='ignorar'?'background:#fffbeb':(i%2?'background:#fafbfc':'');
+        h+='<tr style="border-top:1px solid #f1f5f9;'+rowBg+'" title="'+tooltipOficial+'">';
+        h+='<td style="padding:5px 8px;text-align:center;font-family:monospace;font-weight:700;font-size:11px;color:#475569">'+codDisp+'</td>';
+        h+='<td style="padding:5px 8px;font-weight:600">'+v.lbl+'</td>';
+        h+='<td style="padding:5px 8px;text-align:center"><span title="'+tipoTitle+'" style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:'+(v.tipo==='1500'?'#dbeafe':'#fef3c7')+';color:'+(v.tipo==='1500'?'#1e40af':'#92400e')+'">'+tipoLbl+'</span></td>';
+        h+='<td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(v.valor)+'</td>';
+        h+='<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:#64748b">'+v.qtd.toLocaleString('pt-BR')+'</td>';
+        h+='<td style="padding:5px 8px;text-align:right;font-size:11px;color:#64748b">'+pct.toFixed(1)+'%</td>';
+        h+='<td style="padding:5px 8px;text-align:center;color:'+clsCor+';font-weight:600;font-size:11px">'+clsBadge+'</td>';
+        h+='</tr>';
       });
       h+='</tbody></table>';
+      h+='<div style="font-size:9px;color:#94a3b8;margin-top:-12px;margin-bottom:16px;padding:0 4px">Cód. NAT_OPER conforme Manual DIMP Leiaute v7 (Reg. 1115, campo 09). Tipo: IP=Inst. Pagamento (1100), IF=Inst. Financeira (1500). Passe o mouse para ver descrição oficial.</div>';
     }
     
     c.innerHTML=h;

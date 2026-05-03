@@ -57,6 +57,11 @@ h1{font-size:24px;font-weight:800;letter-spacing:-.02em;margin-bottom:4px}
 .progress-wrap.badge-mode .progress-pct{text-align:left;font-size:12px;font-weight:600;color:var(--success);padding:6px 12px;background:var(--success-soft);border-radius:8px;display:inline-block}
 .log-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 16px;max-height:200px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:11px;margin:1rem 0;display:none;line-height:1.7}
 .ok{color:var(--success)}.err{color:var(--danger)}.warn{color:#92400e}.inf{color:var(--text-2)}
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;color:#fff;background:#1e3a8a;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:toastIn .3s ease,toastOut .3s ease 2.2s forwards;pointer-events:none}
+.toast.success{background:#166534}.toast.info{background:#1d4ed8}.toast.warn{background:#92400e}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0}}
 .placeholder-msg{padding:60px 20px;text-align:center;color:var(--text-3);background:var(--surface);border:1px dashed var(--border);border-radius:var(--radius)}
 .placeholder-msg .icon{font-size:48px;margin-bottom:12px;opacity:.5}
 
@@ -600,19 +605,42 @@ tr.expanded .expand-arrow{transform:rotate(90deg);color:var(--primary)}
 </div>
 <footer class="app-footer">Radar ST · v3.1 · EFD integrado · Abril/2026</footer>
 </div>
+<div class="toast-container" id="toast-container"></div>
 
 <script>
 const SENHA_HASH='70c2dfd306a178692c9d61065e471f35368fe1a1ba48471f353b7082a79d76d9';
+const ADMIN_HASH='9bae7196580cf2d5612de76df480b8e919506807267bde04251efa4f184a2388';
+let isAdmin=false;
 async function sha256(msg){const enc=new TextEncoder().encode(msg);const buf=await crypto.subtle.digest('SHA-256',enc);return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');}
 async function tentarLogin(){
   const hash=await sha256(document.getElementById('pwd-input').value);
-  if(hash===SENHA_HASH){
+  if(hash===ADMIN_HASH){
+    isAdmin=true;
+    sessionStorage.setItem('nfe_auth','admin');
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='block';
+  }else if(hash===SENHA_HASH){
+    isAdmin=false;
     sessionStorage.setItem('nfe_auth','ok');
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app').style.display='block';
   }else{document.getElementById('login-error').style.display='block';document.getElementById('pwd-input').value='';}
 }
-if(sessionStorage.getItem('nfe_auth')==='ok'){document.getElementById('login-screen').style.display='none';document.getElementById('app').style.display='block';}
+{const authState=sessionStorage.getItem('nfe_auth');
+if(authState==='admin'||authState==='ok'){
+  isAdmin=authState==='admin';
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+}}
+
+function toast(msg,tipo='info'){
+  const c=document.getElementById('toast-container');if(!c)return;
+  const t=document.createElement('div');
+  t.className='toast '+(tipo||'info');
+  t.textContent=msg;
+  c.appendChild(t);
+  setTimeout(()=>{if(t.parentNode)t.parentNode.removeChild(t);},2600);
+}
 
 function navTo(sec,el){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -1337,6 +1365,11 @@ async function xlSave(wb,name){
   const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=name;a.click();URL.revokeObjectURL(a.href);
+  toast('📥 '+name+' exportado','success');
+}
+
+function copiarChave(chave,btn){
+  navigator.clipboard.writeText(chave).then(()=>{if(btn)btn.textContent='✓ Copiada';toast('✅ Chave copiada','success');});
 }
 
 /* ══════════ EXPORTAR GENÉRICO (Notas+Itens) ══════════ */
@@ -2189,7 +2222,7 @@ function renderPATable(){
     const segCell=r.forcado?'<span title="CEST excluído pelo Prot. 95/22 — incluído manualmente no cálculo" style="background:#fef3c7;padding:1px 4px;border-radius:3px">⊕ '+segLabel+'</span>':segLabel;
     h+=`<tr class="main" onclick="(function(){var d=document.getElementById('pad-${i}');var o=d.style.display==='none';d.style.display=o?'table-row':'none'})()" style="cursor:pointer;border-bottom:1px solid #f1f5f9${i%2===0?';background:#fafbfc':''}"><td style="text-align:center;font-size:10px;color:#64748b">▶</td><td><span class="ap-pill ${stCls}">${stTxt}</span>${alertIcon}${evtBadge}</td><td style="font-size:10px;white-space:nowrap">${segCell}</td><td style="white-space:nowrap">${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.xProd||''}">${r.xProd||''}</td><td class="right" style="white-space:nowrap;font-size:11px">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700;white-space:nowrap">${valor}</td></tr>`;
     h+=`<tr id="pad-${i}" style="display:none;background:#f8fafc;border-left:3px solid #1e40af"><td colspan="11" style="padding:6px 0">
-     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h5 style="margin:0;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;flex:1">Identificação</h5><button onclick="navigator.clipboard.writeText('${r.chave||''}').then(()=>this.textContent='✓ Copiada')" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button><button onclick="gerarDANFE('${r.chave||''}','${r.nitem||''}')" style="padding:3px 10px;border:1px solid #93c5fd;border-radius:5px;background:#eff6ff;font-size:9px;cursor:pointer;color:#1e40af;font-weight:600">🖨️ DANFE</button></div><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · ${r.segTag||'🔧'} <b>${r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça'}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${r.segBase?' · <span style="color:#64748b;font-size:11px">'+r.segBase+'</span>':''}</div></div>
+     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><h5 style="margin:0;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;flex:1">Identificação</h5><button onclick="copiarChave('${r.chave||''}',this)" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button><button onclick="gerarDANFE('${r.chave||''}','${r.nitem||''}')" style="padding:3px 10px;border:1px solid #93c5fd;border-radius:5px;background:#eff6ff;font-size:9px;cursor:pointer;color:#1e40af;font-weight:600">🖨️ DANFE</button></div><div style="font-size:13px;color:#1e293b">Item <b>${r.nitem}</b> · ${r.segTag||'🔧'} <b>${r.segNome==='bateria'?'Bateria':r.segNome==='pneumatico'?'Pneumático':'Autopeça'}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${r.segBase?' · <span style="color:#64748b;font-size:11px">'+r.segBase+'</span>':''}</div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 6px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cálculo da base</h5><div style="font-size:13px;color:#1e293b">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA orig. <b>${pct(r.mvaOriginal)}</b>${r.regime!=='SN'?' → ajustada <b>'+pct(r.mvaCorreta)+'</b>':' (SN, sem ajuste)'} → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:8px 12px"><h5 style="margin:0 0 8px;font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Comparação Declarado × Correto</h5><table style="max-width:480px;font-size:13px;font-variant-numeric:tabular-nums;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:5px 16px 5px 0;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0"></th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Declarado</th><th style="text-align:right;padding:5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Correto</th><th style="text-align:right;padding:5px 0 5px 16px;font-size:10px;color:#94a3b8;font-weight:600;border-bottom:1px solid #e2e8f0">Diferença</th></tr></thead><tbody>
       <tr><td style="color:#475569;font-weight:600;padding:6px 16px 6px 0">BC-ST</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTDeclarado)}</td><td style="text-align:right;padding:6px 16px">R$ ${fmt(r.bcSTCorreta)}</td><td style="text-align:right;padding:6px 16px">—</td></tr>
@@ -3940,7 +3973,7 @@ ${alertHtml}
 </body></html>`;
 
   const w=window.open('','_blank');
-  if(w){w.document.write(html);w.document.close();}
+  if(w){w.document.write(html);w.document.close();toast('🖨️ DANFE gerada','info');}
 }
 
 /* ══════════ INVESTIGAÇÃO DE FILIAL ══════════ */
@@ -4235,7 +4268,64 @@ function renderMon(){
       <div class="card-row" style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:4px"><span class="label" style="font-weight:700">TOTAL</span><span class="value big" style="color:var(--danger)">R$ ${fmt(totCob)}</span></div>
      </div>
     </div>
-    <table class="ap-tbl"><thead><tr><th style="width:30px"></th><th>Status</th><th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Reg</th><th>Descrição</th><th class="right">MVA</th><th class="right">ST Devido / Dif</th></tr></thead><tbody>`;
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:#64748b;padding:8px 14px;background:#f8fafc;border-radius:6px;margin-bottom:8px;border:1px solid #f1f5f9"><span style="font-weight:600;color:#475569">Legenda:</span><span>🔴 Sem retenção ST</span><span>⚠ Divergência MVA</span><span>🟢 Regular</span><span>📝 CCe</span><span>🚫 Cancelada</span></div>`;
+    if(isAdmin) h+=`<div style="margin-bottom:12px"><button onclick="iaAnalisar()" class="btn btn-secondary" style="font-size:12px;padding:7px 16px;background:#f5f3ff;border-color:#c4b5fd;color:#5b21b6">🤖 Analisar com IA</button></div>`;
+    h+=`<div id="ia-result" style="display:none;background:#fff;border:1.5px solid #c4b5fd;border-radius:10px;margin-bottom:16px;box-shadow:0 2px 8px rgba(91,33,182,.08)"></div>`;
+    // ═══ ANÁLISE POR EMITENTE (Autopeças/Celulares) ═══
+    {
+      const _emitMap={};
+      const _srcAP=isCel?paCelResultados:paResultados;
+      _srcAP.forEach(r=>{
+        if(r.isDevolucao||(isCel&&r.isUsado))return;
+        const cnpj=r.emitCNPJ||'';
+        const raiz=cnpj.substring(0,8);
+        const nome=r.emitNome||'';
+        const uf=r.ufEmit||'';
+        const k=raiz||nome;
+        if(!k)return;
+        if(!_emitMap[k])_emitMap[k]={raiz,nome,uf,notas:new Set(),itens:0,
+          semST:0,diverg:0,regular:0,totalCobrar:0,cfops:{},cests_vazios:0};
+        const e=_emitMap[k];
+        e.itens++;e.notas.add(r.chave||r.numero||'');
+        if(!e.nome&&nome)e.nome=nome;if(!e.uf&&uf)e.uf=uf;
+        if(r.status==='sem'){e.semST++;e.totalCobrar+=r.icmsSTCorreto||0;}
+        else if(r.status==='diverg'&&r.diferenca>0){e.diverg++;e.totalCobrar+=r.diferenca||0;}
+        else{e.regular++;}
+        const cfop=r.CFOP||'';if(cfop){e.cfops[cfop]=(e.cfops[cfop]||0)+1;}
+        if(!(r.CEST))e.cests_vazios++;
+      });
+      const _emitList=Object.values(_emitMap).filter(e=>e.itens>0).sort((a,b)=>b.totalCobrar-a.totalCobrar);
+      if(_emitList.length>0){
+        h+=`<div style="margin:16px 0"><div onclick="var t=this.nextElementSibling;t.style.display=t.style.display==='none'?'block':'none';this.querySelector('span').textContent=t.style.display==='none'?'▶':'▼'" style="cursor:pointer;padding:8px 14px;background:#f1f5f9;border-radius:8px;font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:6px"><span>▶</span> Análise por emitente (${_emitList.length} empresas)</div><div style="display:none;margin-top:2px">`;
+        _emitList.forEach(e=>{
+          const nNotas=e.notas.size;
+          const temProblema=e.totalCobrar>0;
+          const borderColor=temProblema?'#fecaca':'#e2e8f0';
+          const bgColor=temProblema?'#fef2f2':'#fff';
+          h+=`<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:8px;padding:12px 16px;margin-bottom:8px">`;
+          h+=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">`;
+          h+=`<div style="font-size:13px;font-weight:700;color:var(--text)">${e.nome} <span style="font-weight:400;color:var(--text-3);font-size:11px">(${e.uf}) · ${nNotas} nota${nNotas>1?'s':''} · ${e.itens} ite${e.itens>1?'ns':'m'}</span></div>`;
+          if(e.totalCobrar>0) h+=`<div style="font-size:13px;font-weight:800;color:#b91c1c">R$ ${fmt(e.totalCobrar)}</div>`;
+          else h+=`<div style="font-size:12px;color:#166534;font-weight:600">✅ Regular</div>`;
+          h+=`</div>`;
+          const patterns=[];
+          if(e.semST>0) patterns.push('🔴 '+e.semST+' ite'+(e.semST>1?'ns':'m')+' sem retenção ST');
+          if(e.diverg>0) patterns.push('⚠ '+e.diverg+' ite'+(e.diverg>1?'ns':'m')+' com divergência ST');
+          const cfopsSemST=Object.entries(e.cfops).filter(([c])=>['6105','6106'].includes(c));
+          if(cfopsSemST.length>0) patterns.push('📋 '+cfopsSemST.map(([c,n])=>'CFOP '+c+' ('+n+'×)').join(', ')+' — operações sem trânsito');
+          if(e.cests_vazios>0&&e.cests_vazios<e.itens) patterns.push('🏷️ '+e.cests_vazios+' ite'+(e.cests_vazios>1?'ns':'m')+' sem CEST');
+          if(e.cests_vazios===e.itens&&e.itens>1) patterns.push('🏷️ Nenhum item com CEST preenchido');
+          if(patterns.length>0){
+            h+=`<div style="font-size:11px;color:#475569;line-height:1.7">`;
+            patterns.forEach(p=>{h+=`<div>${p}</div>`;});
+            h+=`</div>`;
+          }
+          h+=`</div>`;
+        });
+        h+=`</div></div>`;
+      }
+    }
+    h+=`<table class="ap-tbl"><thead><tr><th style="width:30px"></th><th>Status</th><th>Data</th><th>NF-e</th><th>UF</th><th>Emitente</th><th>Reg</th><th>Descrição</th><th class="right">MVA</th><th class="right">ST Devido / Dif</th></tr></thead><tbody>`;
     pagDados.forEach((r,i)=>{
       const gi=pagStart+i;
       const isDev=r.isDevolucao;
@@ -4251,7 +4341,7 @@ function renderMon(){
       const rowStyle=isDev||isUsadoR?'opacity:0.6;':'';
       h+=`<tr class="main" style="${rowStyle}cursor:pointer;border-bottom:1px solid #f1f5f9${gi%2===0?';background:#fafbfc':''}" onclick="(function(e,a){var d=document.getElementById('apd-${gi}');var o=d.style.display==='none';d.style.display=o?'table-row':'none';a.classList.toggle('open',o)})(this,this.querySelector('.ap-arrow'))"><td><span class="ap-arrow">▶</span></td><td><span class="ap-pill ${stCls}">${stTxt}</span>${antecBadge}${alertIcon}${evtBadgeCel}</td><td>${fmtData(r.data)}</td><td>${r.numero||''}</td><td><b>${r.ufEmit||''}</b></td><td title="${r.emitNome||''}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${(r.emitNome||'').substring(0,24)}</td><td>${r.regime==='SN'?'<span class="ap-pill div" style="background:#e0e7ff;color:#3730a3">SN</span>':'<span class="ap-pill ok" style="background:#f1f5f9;color:#475569">RN</span>'}</td><td class="desc" title="${r.xProd||''}">${(r.xProd||'')}</td><td class="right">${mvaCmp}</td><td class="right" style="color:${valColor};font-weight:700">${valor}</td></tr>`;
       h+=`<tr id="apd-${gi}" class="ap-detail" style="display:none"><td colspan="10" style="padding:6px 0">
-       <div class="ap-section"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h5 style="flex:1;margin:0">Identificação</h5><button onclick="navigator.clipboard.writeText('${r.chave||''}').then(()=>this.textContent='✓ Copiada')" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button><button onclick="gerarDANFE('${r.chave||''}','${r.nitem||''}')" style="padding:3px 10px;border:1px solid #93c5fd;border-radius:5px;background:#eff6ff;font-size:9px;cursor:pointer;color:#1e40af;font-weight:600">🖨️ DANFE</button></div><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}${isUsadoR?' · <b style="color:#7c3aed">CELULAR USADO</b>':''}</div></div>
+       <div class="ap-section"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><h5 style="flex:1;margin:0">Identificação</h5><button onclick="copiarChave('${r.chave||''}',this)" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button><button onclick="gerarDANFE('${r.chave||''}','${r.nitem||''}')" style="padding:3px 10px;border:1px solid #93c5fd;border-radius:5px;background:#eff6ff;font-size:9px;cursor:pointer;color:#1e40af;font-weight:600">🖨️ DANFE</button></div><div class="row">Item <b>${r.nitem}</b> · NCM <b>${r.NCM||'—'}</b> · CEST <b>${r.CEST||'—'}</b> · CFOP <b>${r.CFOP||'—'}</b> · Vl. Produto <b>R$ ${fmt(r.vProd)}</b> · Regime <b>${r.regime==='SN'?'Simples Nacional':'Regime Normal'}</b>${isDev?' · <b style="color:#6366f1">DEVOLUÇÃO</b>':''}${isUsadoR?' · <b style="color:#7c3aed">CELULAR USADO</b>':''}</div></div>
        <div class="ap-section"><h5>Cálculo da base</h5><div class="row">${r.vDescItem>0?'Vl.Prod <b>R$ '+fmt(r.vProd)+'</b> − Desc.Inc. <b>R$ '+fmt(r.vDescItem)+'</b> + IPI <b>R$ '+fmt(r.ipiItem)+'</b> = ':''}Base Pré-MVA <b>R$ ${fmt(r.basePreMVA)}</b> → ALQ inter <b>${pct(r.aliqInter)}</b> / intra <b>${pct(r.aliqIntra)}</b> → MVA <b>${pct(r.mvaCorreta)}</b> → BC-ST <b>R$ ${fmt(r.bcSTCorreta)}</b><br>ICMS Próprio (${r.regime==='SN'?'crédito calculado p/ Simples':'já presente no Normal'}): <b>R$ ${fmt(r.icmsProprioCorreto)}</b></div></div>
        <div class="ap-section"><h5>Comparação Declarado × Correto</h5><table class="ap-cmp"><thead><tr><th></th><th>Declarado</th><th>Correto</th><th>Diferença</th></tr></thead><tbody>
         <tr><td>BC-ST</td><td>R$ ${fmt(r.bcSTDeclarado)}</td><td>R$ ${fmt(r.bcSTCorreta)}</td><td>—</td></tr>
@@ -4524,6 +4614,105 @@ function renderMon(){
   h+='<div class="total-bar"><div><div class="lbl">Total a cobrar</div><div class="val">R$ '+fmt(totalCobrar)+'</div>';
   if(tSTExcesso>0) h+='<div style="font-size:11px;color:#93c5fd;margin-top:2px">Excesso ST (não compensável): R$ '+fmt(tSTExcesso)+'</div>';
   h+='</div><div class="badge">'+(irreg)+' itens com pendência</div></div>';
+  h+='<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:#64748b;padding:8px 14px;background:#f8fafc;border-radius:6px;margin-bottom:8px;border:1px solid #f1f5f9"><span style="font-weight:600;color:#475569">Legenda:</span><span>🔴 A cobrar (ST a menos / FUMACOP)</span><span>🔵 Excesso (informativo)</span><span>🟠 FUMACOP devido</span><span>🟢 Regular</span><span>📝 CCe</span><span>🚫 Cancelada</span></div>';
+  if(isAdmin) h+='<div style="margin-bottom:12px"><button onclick="iaAnalisar()" class="btn btn-secondary" style="font-size:12px;padding:7px 16px;background:#f5f3ff;border-color:#c4b5fd;color:#5b21b6">🤖 Analisar com IA</button></div>';
+  h+='<div id="ia-result" style="display:none;background:#fff;border:1.5px solid #c4b5fd;border-radius:10px;margin-bottom:16px;box-shadow:0 2px 8px rgba(91,33,182,.08)"></div>';
+
+  // ═══ ANÁLISE POR EMITENTE ═══
+  {
+    const emitMap={};
+    const srcData=monModulo==='veiculos'?dados:(monModulo==='celulares'?paCelResultados:paResultados);
+    srcData.forEach(r=>{
+      const cnpj=r.emitCNPJ||r.cnpjEmit||'';
+      const raiz=cnpj.substring(0,8);
+      const nome=r.emitNome||r.nomeEmit||'';
+      const uf=r.ufEmit||'';
+      const k=raiz||nome;
+      if(!k)return;
+      if(!emitMap[k])emitMap[k]={raiz,nome,uf,notas:new Set(),itens:0,
+        semST:0,diverg:0,excesso:0,regular:0,
+        totalCobrar:0,totalExcesso:0,
+        fumaOmisso:0,fumaValor:0,
+        cfops:{},cests_vazios:0,
+        pRedInvertido:0,embutFumacop:0,
+        vulnerabilidades:[]};
+      const e=emitMap[k];
+      e.itens++;
+      e.notas.add(r.chave||r.numero||'');
+      if(!e.nome&&nome)e.nome=nome;
+      if(!e.uf&&uf)e.uf=uf;
+      // Classificar por status
+      if(monModulo==='veiculos'){
+        if(r.statusItem==='Irregular'){e.diverg++;
+          const div=r.divergenciaST||0;
+          if(div>5)e.totalCobrar+=div;
+          if(r.fumacopAplicavel&&(r.vFCPSTDecl||0)===0){e.fumaOmisso++;e.fumaValor+=r.vfcpstEsperado||0;e.totalCobrar+=r.vfcpstEsperado||0;}
+        }else if(r.statusItem==='Excesso'){e.excesso++;e.totalExcesso+=Math.abs(r.divergenciaST||0);}
+        else{e.regular++;}
+        // Padrões
+        if(r.vulnerabilidades){
+          r.vulnerabilidades.forEach(v=>{
+            if(v.includes('pRedBCST invertido'))e.pRedInvertido++;
+            if(v.includes('embutimento'))e.embutFumacop++;
+          });
+        }
+      } else {
+        // Autopeças / Celulares
+        if(r.status==='sem'){e.semST++;e.totalCobrar+=r.icmsSTCorreto||0;}
+        else if(r.status==='diverg'&&r.diferenca>0){e.diverg++;e.totalCobrar+=r.diferenca||0;}
+        else{e.regular++;}
+      }
+      // CFOPs
+      const cfop=r.CFOP||r.cfop||'';
+      if(cfop){e.cfops[cfop]=(e.cfops[cfop]||0)+1;}
+      // CEST vazio
+      if(!(r.CEST||r.cest))e.cests_vazios++;
+    });
+    const emitList=Object.values(emitMap).filter(e=>e.itens>0).sort((a,b)=>b.totalCobrar-a.totalCobrar);
+    if(emitList.length>0){
+      h+='<div style="margin:16px 0"><div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=t.style.display===\'none\'?\'▶\':\'▼\'" style="cursor:pointer;padding:8px 14px;background:#f1f5f9;border-radius:8px;font-size:12px;font-weight:700;color:#475569;display:flex;align-items:center;gap:6px"><span>▶</span> Análise por emitente ('+emitList.length+' empresas)</div><div style="display:none;margin-top:2px">';
+      emitList.forEach(e=>{
+        const nNotas=e.notas.size;
+        const temProblema=e.totalCobrar>0;
+        const borderColor=temProblema?'#fecaca':'#e2e8f0';
+        const bgColor=temProblema?'#fef2f2':'#fff';
+        h+='<div style="background:'+bgColor+';border:1px solid '+borderColor+';border-radius:8px;padding:12px 16px;margin-bottom:8px">';
+        // Header
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        h+='<div style="font-size:13px;font-weight:700;color:var(--text)">'+e.nome+' <span style="font-weight:400;color:var(--text-3);font-size:11px">('+e.uf+') · '+nNotas+' nota'+(nNotas>1?'s':'')+' · '+e.itens+' ite'+(e.itens>1?'ns':'m')+'</span></div>';
+        if(e.totalCobrar>0) h+='<div style="font-size:13px;font-weight:800;color:#b91c1c">R$ '+fmt(e.totalCobrar)+'</div>';
+        else h+='<div style="font-size:12px;color:#166534;font-weight:600">✅ Regular</div>';
+        h+='</div>';
+        // Detalhes — padrões detectados
+        const patterns=[];
+        if(monModulo==='veiculos'){
+          if(e.fumaOmisso>0) patterns.push('🟠 FUMACOP não declarado em '+e.fumaOmisso+' nota'+(e.fumaOmisso>1?'s':'')+' (R$ '+fmt(e.fumaValor)+')');
+          if(e.embutFumacop>0) patterns.push('🔴 FUMACOP embutido nos 12% em '+e.embutFumacop+' nota'+(e.embutFumacop>1?'s':''));
+          if(e.excesso>0) patterns.push('🔵 Excesso ST em '+e.excesso+' nota'+(e.excesso>1?'s':'')+' (R$ '+fmt(e.totalExcesso)+' — não compensável)');
+          if(e.pRedInvertido>0) patterns.push('ℹ pRedBCST invertido em '+e.pRedInvertido+' nota'+(e.pRedInvertido>1?'s':'')+' (sem impacto financeiro)');
+        } else {
+          if(e.semST>0) patterns.push('🔴 '+e.semST+' ite'+(e.semST>1?'ns':'m')+' sem retenção ST');
+          if(e.diverg>0) patterns.push('⚠ '+e.diverg+' ite'+(e.diverg>1?'ns':'m')+' com divergência ST');
+        }
+        // CFOPs sem ST
+        const cfopsSemST=Object.entries(e.cfops).filter(([c,n])=>['6105','6106'].includes(c));
+        if(cfopsSemST.length>0){
+          const cfopTxt=cfopsSemST.map(([c,n])=>'CFOP '+c+' ('+n+'×)').join(', ');
+          patterns.push('📋 '+cfopTxt+' — operações sem trânsito pelo emitente');
+        }
+        if(e.cests_vazios>0&&e.cests_vazios<e.itens) patterns.push('🏷️ '+e.cests_vazios+' ite'+(e.cests_vazios>1?'ns':'m')+' sem CEST preenchido');
+        if(e.cests_vazios===e.itens&&e.itens>1) patterns.push('🏷️ Nenhum item com CEST preenchido');
+        if(patterns.length>0){
+          h+='<div style="font-size:11px;color:#475569;line-height:1.7">';
+          patterns.forEach(p=>{h+='<div>'+p+'</div>';});
+          h+='</div>';
+        }
+        h+='</div>';
+      });
+      h+='</div></div>';
+    }
+  }
+
   // Resumo por convênio
   if(monModulo==='veiculos'){
     const convResumo={};
@@ -4628,7 +4817,7 @@ function renderMon(){
     h+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#334155">';
     h+='<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">';
     h+='<span style="flex:1"><b>NF '+r.numero+'</b> · '+r.data+' · Chave: <span style="font-family:monospace;font-size:10px">'+r.chave+'</span></span>';
-    h+='<button onclick="event.stopPropagation();navigator.clipboard.writeText(\''+r.chave+'\').then(()=>this.textContent=\'✓ Copiada\')" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button>';
+    h+='<button onclick="event.stopPropagation();copiarChave(\''+r.chave+'\',this)" style="padding:3px 10px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;font-size:9px;cursor:pointer;color:#475569;font-weight:600">📋 Copiar chave</button>';
     h+='<button onclick="event.stopPropagation();gerarDANFE(\''+r.chave+'\',\''+r.nitem+'\')" style="padding:3px 10px;border:1px solid #93c5fd;border-radius:5px;background:#eff6ff;font-size:9px;cursor:pointer;color:#1e40af;font-weight:600">🖨️ DANFE</button>';
     h+='</div>';
     if(r.destNome) h+='<div style="margin-top:4px">Dest: <b>'+r.destNome+'</b>'+(r.entregaMun?' · '+r.entregaMun+'/'+r.entregaUF:'')+'</div>';
@@ -7615,6 +7804,214 @@ async function oieExportar(){
   xlAutoWidth(ws,[20,18,40,5,12,16,16,16,16,16,16,16]);
   ws.autoFilter={from:{row:3,column:1},to:{row:3+oieResultados.length,column:hd.length}};
   await xlSave(wb,'OIE_cruzamento_'+hoje+'.xlsx');
+}
+
+/* ══════════ ANÁLISE IA (ADMIN ONLY) ══════════ */
+function iaGetDadosModulo(){
+  if(monModulo==='veiculos') return paVeicResultados.filter(r=>r.statusItem!=='outraUF'&&!r.isDevolucao&&!r.isRemessa);
+  if(monModulo==='celulares') return paCelResultados;
+  return paResultados;
+}
+
+function iaAnonimizar(dados){
+  const map=new Map();
+  let empIdx=1,destIdx=1;
+  function anonEmp(cnpj,nome){
+    if(!cnpj&&!nome)return{id:'Empresa ?',orig:''};
+    const key=cnpj?cnpj.substring(0,8):nome;
+    if(map.has(key))return map.get(key);
+    const entry={id:'Empresa '+String.fromCharCode(64+empIdx),orig:nome||cnpj,cnpjOrig:cnpj};
+    empIdx++;map.set(key,entry);
+    return entry;
+  }
+  const anonDados=dados.map(r=>{
+    const emp=anonEmp(r.emitCNPJ||r.cnpjEmit||'',r.emitNome||r.nomeEmit||'');
+    const obj={emitente:emp.id,uf:r.ufEmit||''};
+    if(monModulo==='veiculos'){
+      Object.assign(obj,{convenio:r.convenio||'',status:r.statusItem||'',
+        stDeclarado:r.stDeclarado||0,stCalculado:r.stCalculado||0,
+        divergenciaST:r.divergenciaST||0,fumacopDecl:r.vFCPSTDecl||0,
+        fumacopEsperado:r.vfcpstEsperado||0,fumacopAplicavel:r.fumacopAplicavel||false,
+        pmcf:r.pmcf||0,pICMSST:r.pICMSST||0,pRedBCST:r.pRedBCST||0,
+        coefDecl:r.coefDecl,coefEsperado:r.coefEsperado,
+        vulnerabilidades:(r.vulnerabilidades||[]).map(v=>v.replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g,'[CNPJ]').replace(/\d{14}/g,'[CNPJ]'))
+      });
+    } else {
+      Object.assign(obj,{status:r.status||'',CFOP:r.CFOP||'',NCM:r.NCM||'',CEST:r.CEST||'',
+        mvaUsada:r.mvaUsada,mvaCorreta:r.mvaCorreta,
+        icmsSTDeclarado:r.icmsSTDecl||0,icmsSTCorreto:r.icmsSTCorreto||0,
+        diferenca:r.diferenca||0,
+        alertas:(r.alertas||[]).map(a=>a.replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g,'[CNPJ]').replace(/\d{14}/g,'[CNPJ]'))
+      });
+    }
+    return obj;
+  });
+  return {dados:anonDados,mapa:map};
+}
+
+function iaDesanonimizar(texto,mapa){
+  let result=texto;
+  mapa.forEach((entry)=>{
+    const regex=new RegExp(entry.id.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g');
+    result=result.replace(regex,entry.orig);
+  });
+  return result;
+}
+
+function iaMontarPrompt(anonDados){
+  const modLabel=monModulo==='veiculos'?'Veículos (ICMS-ST)':monModulo==='celulares'?'Celulares/Smartphones':'Autopeças e Derivados';
+  // Agrupar por emitente para resumo
+  const emitGrupos={};
+  anonDados.forEach(r=>{
+    const k=r.emitente;
+    if(!emitGrupos[k])emitGrupos[k]={uf:r.uf,itens:0,semST:0,diverg:0,ok:0,totalSem:0,totalDiv:0,cfops:{},cests_vazios:0,exemplos:[]};
+    const g=emitGrupos[k];g.itens++;
+    if(monModulo==='veiculos'){
+      if(r.status==='Irregular')g.diverg++;
+      else if(r.status==='Excesso')g.ok++;
+      else g.ok++;
+      if(r.divergenciaST>5)g.totalDiv+=r.divergenciaST;
+      if(r.fumacopAplicavel&&r.fumacopDecl===0)g.totalSem+=r.fumacopEsperado;
+    } else {
+      if(r.status==='sem'){g.semST++;g.totalSem+=r.icmsSTCorreto||0;}
+      else if(r.status==='diverg'&&r.diferenca>0){g.diverg++;g.totalDiv+=r.diferenca;}
+      else g.ok++;
+      if(r.CFOP)g.cfops[r.CFOP]=(g.cfops[r.CFOP]||0)+1;
+      if(!r.CEST)g.cests_vazios++;
+    }
+    if(g.exemplos.length<5&&(r.status==='sem'||(r.diferenca||0)>100||r.divergenciaST>100))g.exemplos.push(r);
+  });
+  const resumo=JSON.stringify(emitGrupos,null,0);
+  return `Você é um auditor fiscal de ICMS-ST do Maranhão. Analise os resultados do monitoramento de ${modLabel}.
+
+REGRAS DA ANÁLISE:
+- Seja direto e conciso (máximo 1500 palavras)
+- Agrupe por emitente
+- Para cada emitente: quantas notas, tipo de irregularidade, valor total a cobrar
+- Identifique padrões (comportamento sistemático vs pontual)
+- NÃO especule sobre intenções ou dolo — relate apenas os fatos
+- NÃO invente referências legais que não tenha certeza
+- NÃO repita dados que já estão nos números — interprete
+- Priorize por valor financeiro
+- Se MVA for negativa, pode ser erro de cálculo do sistema, não necessariamente fraude
+- Termine com uma lista de ações recomendadas (máximo 5 itens)
+
+RESUMO POR EMITENTE:
+${resumo}
+
+AMOSTRA DE ITENS RELEVANTES (até 20):
+${JSON.stringify(anonDados.filter(r=>r.status==='sem'||(r.diferenca||0)>100||r.divergenciaST>100).slice(0,20),null,0)}
+
+Total de itens analisados: ${anonDados.length}`;
+}
+
+async function iaAnalisar(){
+  const dados=iaGetDadosModulo();
+  if(!dados.length){alert('Execute o monitoramento primeiro');return;}
+  
+  // Anonimizar
+  const {dados:anonDados,mapa}=iaAnonimizar(dados);
+  const nEmpresas=mapa.size;
+  
+  // Confirmação
+  const modal=document.createElement('div');
+  modal.id='ia-confirm-modal';
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML=`<div style="background:#fff;border-radius:12px;padding:24px;max-width:500px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px">🔒 Análise com IA — Proteção de dados</div>
+    <div style="font-size:13px;color:#475569;line-height:1.8;margin-bottom:16px">
+      <div>Os dados serão <b>anonimizados</b> antes do envio:</div>
+      <div style="margin:10px 0;padding:10px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
+        <div>✅ CNPJs, nomes e IEs substituídos por códigos</div>
+        <div>✅ CPFs nunca enviados</div>
+        <div>✅ Chaves de NF-e nunca enviadas</div>
+        <div>✅ Valores e padrões fiscais mantidos para análise</div>
+      </div>
+      <div>A API recebe apenas dados técnicos (UFs, CFOPs, NCMs, alíquotas, valores) sem identificação das empresas.</div>
+    </div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:16px;padding:8px 12px;background:#f8fafc;border-radius:6px">
+      Empresas nesta análise: <b>${nEmpresas}</b> · Itens analisados: <b>${anonDados.length}</b>
+    </div>
+    <div style="font-size:11px;color:#92400e;margin-bottom:16px;padding:8px 12px;background:#fef3c7;border-radius:6px;border:1px solid #fcd34d">
+      🔑 Na primeira vez, será solicitada sua chave de API Anthropic (sk-ant-...). Ela fica salva no navegador para uso futuro.
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="document.getElementById('ia-confirm-modal').remove()" style="padding:8px 20px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px">Cancelar</button>
+      <button onclick="document.getElementById('ia-confirm-modal').remove();iaExecutar()" style="padding:8px 20px;border:none;border-radius:8px;background:#1e3a8a;color:#fff;cursor:pointer;font-size:13px;font-weight:600">▶ Enviar anonimizado</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  
+  // Store for execution
+  window._iaCtx={anonDados,mapa};
+}
+
+async function iaExecutar(){
+  const {anonDados,mapa}=window._iaCtx;
+  const prompt=iaMontarPrompt(anonDados);
+  
+  // API key — pedir na primeira vez, guardar na sessão
+  let apiKey=localStorage.getItem('ia_api_key')||'';
+  if(!apiKey){
+    apiKey=window.prompt('Digite sua chave de API Anthropic (sk-ant-...):','');
+    if(!apiKey){toast('Análise cancelada','warn');return;}
+    localStorage.setItem('ia_api_key',apiKey);
+  }
+  
+  // Show loading
+  const resultDiv=document.getElementById('ia-result');
+  if(resultDiv){
+    resultDiv.style.display='block';
+    resultDiv.innerHTML='<div style="padding:20px;text-align:center;color:#64748b"><div style="font-size:24px;margin-bottom:8px">🔄</div><div style="font-size:13px">Analisando '+anonDados.length+' itens de '+mapa.size+' empresas...</div></div>';
+  }
+  
+  try{
+    const response=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:2000,
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    if(response.status===401){
+      localStorage.removeItem('ia_api_key');
+      throw new Error('Chave de API inválida. Tente novamente.');
+    }
+    const data=await response.json();
+    if(data.error){throw new Error(data.error.message||'Erro na API');}
+    const textoAnon=data.content.map(c=>c.text||'').join('\n');
+    const textoFinal=iaDesanonimizar(textoAnon,mapa);
+    
+    if(resultDiv){
+      resultDiv.innerHTML=`<div style="padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:14px;font-weight:700;color:var(--text)">🤖 Análise IA</span>
+          <div style="display:flex;gap:6px">
+            <button onclick="var t=document.querySelector('.ia-text');if(t)navigator.clipboard.writeText(t.textContent).then(()=>toast('📋 Análise copiada','success'))" style="padding:4px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;font-size:10px;cursor:pointer">📋 Copiar</button>
+            <button onclick="this.closest('#ia-result').style.display='none'" style="padding:4px 12px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;font-size:10px;cursor:pointer">✕ Fechar</button>
+          </div>
+        </div>
+        <div class="ia-text" style="font-size:12.5px;color:#334155;line-height:1.7;white-space:pre-wrap;font-family:inherit">${textoFinal.replace(/</g,'&lt;').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>').replace(/^### (.*)/gm,'<div style=\"font-size:14px;font-weight:700;margin:12px 0 4px;color:#1e3a8a\">$1</div>').replace(/^## (.*)/gm,'<div style=\"font-size:15px;font-weight:700;margin:16px 0 6px;color:#1e293b\">$1</div>').replace(/^- (.*)/gm,'<div style=\"padding-left:12px\">• $1</div>')}</div>
+      </div>`;
+    }
+    toast('✅ Análise concluída','success');
+  }catch(e){
+    if(resultDiv){
+      resultDiv.innerHTML=`<div style="padding:16px;color:#b91c1c">
+        <div style="font-weight:700;margin-bottom:4px">❌ Erro na análise</div>
+        <div style="font-size:12px">${e.message}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:8px">Verifique a conexão com a API Anthropic.</div>
+      </div>`;
+    }
+    toast('❌ Erro na análise IA','warn');
+  }
 }
 
 </script></body></html>

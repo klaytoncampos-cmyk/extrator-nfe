@@ -5995,7 +5995,6 @@ const EFD_STATE={
   efdFiles:[],
   dimpFiles:[], // Array de arquivos DIMP carregados
   dimpParsed:[], // Array de resultados parseados
-  dimpNat4Mode:'excluir', // Como tratar NAT 4 do 1500/1100 ("Transf. Recursos" — direção ambígua): 'excluir' | 'entrada' | 'saida'
   efdData:[],
   dimpData:null,
   empresa:null,
@@ -6162,6 +6161,8 @@ const EFD_DIMP_ALIASES={
   valor:['valor total das operacoes','valor_1115','valor'],
   qtd_ops:['quantidade de operacoes','quantidade'],
   ind_pix:['indicador de tipo de pix','ind_pix'],
+  ind_comex:['indicador de transacao de pagamento ao exterior','ind_comex','transacao ao exterior'],
+  ind_extemp:['indicador de informacao extemporanea','ind_extemp','extemporanea','extemporaneo'],
 };
 function detectDimpLayout(headerRow){
   const colMap={};const hdrNorm=headerRow.map(h=>normHeader(h));
@@ -6198,6 +6199,8 @@ async function parseDIMP(file){
     const r=rows[i];if(!r||r.every(v=>v==null))continue;
     const periodo=parseInt(get(r,'periodo'));if(!periodo)continue;
     const indPixRaw=get(r,'ind_pix');
+    const indComexRaw=get(r,'ind_comex');
+    const indExtempRaw=get(r,'ind_extemp');
     registros.push({
       cnpj_estab:padCNPJ(get(r,'cnpj_estab')),
       cnpj_adqui:padCNPJ(get(r,'cnpj_adqui')),
@@ -6207,83 +6210,82 @@ async function parseDIMP(file){
       natureza:parseInt(get(r,'natureza'))||0,
       valor:efdNum(get(r,'valor')),
       qtd_ops:parseInt(get(r,'qtd_ops'))||0,
-      ind_pix:(indPixRaw==null||indPixRaw==='')?-1:parseInt(indPixRaw)
+      ind_pix:(indPixRaw==null||indPixRaw==='')?-1:parseInt(indPixRaw),
+      ind_comex:(indComexRaw==null||indComexRaw==='')?0:parseInt(indComexRaw),
+      ind_extemp:(indExtempRaw==null||indExtempRaw==='')?0:parseInt(indExtempRaw)
     });
   }
   return{fileName:file.name,tipo,registros};
 }
 function classificaDimp(reg){
-  const n=reg.natureza;const t=reg.tipo_dimp||'1100';
-  // Modo de tratamento da NAT 4 ("Transferência de Recursos" — direção ambígua)
-  // Default: 'excluir' do cruzamento (mais correto); outras opções: 'entrada', 'saida'
-  const nat4Mode=(typeof EFD_STATE!=='undefined'&&EFD_STATE.dimpNat4Mode)||'excluir';
-  if(t==='1100'){
-    // Instituições de Pagamento / Adquirentes (Cielo, Rede, Stone, Mercado Pago...)
-    switch(n){
-      case 1:return'entrada'; // Crédito (cartão de crédito)
-      case 2:return'entrada'; // Débito (cartão de débito)
-      case 3:return'entrada'; // Boleto de transações próprias (boleto pago)
-      case 4: // Transferência de Recursos — direção ambígua
-        return nat4Mode==='entrada'?'entrada':nat4Mode==='saida'?'saida':'ignorar';
-      case 5:return'entrada'; // Pagamento em dinheiro / outra estrutura (recebido pelo vendedor)
-      case 6:return(reg.ind_pix===1)?'entrada':'saida'; // PIX recebido / enviado
-      case 7:return'entrada'; // Voucher (recebido pelo vendedor)
-      case 8:return'saida';   // Saque em estabelecimento (cashback — saída do caixa)
-      case 10:return'entrada'; // Depósito
-      case 11:return'entrada'; // Recepção de pagamento de boletos de terceiros
-      default:return'ignorar';
-    }
-  } else {
-    // Instituições Financeiras (bancos) — Registro 1500
-    switch(n){
-      case 1:return'entrada'; // Crédito em conta
-      case 2:return'saida';   // Débito em conta
-      case 3:return'entrada'; // Boleto de transações próprias (boletos pagos pelos clientes do contribuinte)
-      case 4: // Transferência de Recursos — direção ambígua
-        return nat4Mode==='entrada'?'entrada':nat4Mode==='saida'?'saida':'ignorar';
-      case 5:return'entrada'; // Pagamento em dinheiro / outra estrutura
-      case 6:return(reg.ind_pix===1)?'entrada':'saida'; // PIX recebido / enviado
-      case 7:return'saida';   // Voucher (genérico — saída de caixa para banco)
-      case 8:return'saida';   // Saque em estabelecimento
-      case 10:return'entrada'; // Depósito
-      case 11:return'entrada'; // Recepção de pagamento de boletos de terceiros
-      default:return'ignorar';
-    }
-  }
+  // Premissa do leiaute DIMP (v7/v9/v10, registro 0100):
+  // "identificar os clientes... que RECEBEM os pagamentos, depósitos ou transferências de recursos"
+  // Logo, todo registro reportado é uma ENTRADA do ponto de vista do contribuinte.
+  // As IFs e IPs reportam apenas movimentação recebida — não há lado debitado da contraparte.
+  //
+  // Exclusões aplicadas aqui:
+  //   - IND_COMEX = 1 → operação cross-border, fica fora do cruzamento doméstico com EFD
+  //   - Naturezas 9 (excluída na v10) e 10 (excluída na v10 - era Depósito) → ignoradas para evitar
+  //     contagem em arquivos antigos (v7/v9) que ainda contenham esses códigos
+  if(reg.ind_comex===1) return 'ignorar';
+  const n=reg.natureza;
+  if(n===9||n===10) return 'ignorar';
+  // Toda natureza válida no leiaute → entrada
+  if([1,2,3,4,5,6,7,8,11].includes(n)) return 'entrada';
+  return 'ignorar'; // código fora do leiaute
 }
 function labelNatDimp(reg){
-  const n=reg.natureza;const t=reg.tipo_dimp||'1100';
-  // Labels oficiais conforme Manual DIMP Leiaute v7 (Registro 1115, campo 09)
-  if(n===6) return reg.ind_pix===1?'PIX Recebido':reg.ind_pix===0?'PIX Enviado':'PIX (sem ind.)';
+  const n=reg.natureza;
+  // Labels conforme Manual DIMP Leiaute v10 (Registro 1115, campo 09)
+  // Para NAT 6, IND_TP_PIX (campo 12) é modalidade do QR — NÃO direção
+  if(n===6){
+    if(reg.ind_pix===0) return 'PIX (QR Dinâmico)';
+    if(reg.ind_pix===1) return 'PIX (QR Estático)';
+    return 'PIX (sem ind. tipo)';
+  }
   const m={
     1:'Crédito',
     2:'Débito',
     3:'Boleto de transações próprias',
     4:'Transferência de Recursos',
     5:'Pagamento em dinheiro / outra estrutura',
-    7:'Voucher',
-    8:'Saque em estabelecimento comercial',
-    10:'Depósito',
-    11:'Recepção de boletos / guias de terceiros'
+    7:'Voucher e cartão pré-pago',
+    8:'Saque/troco ou PIX Saque/Troco',
+    9:'(EXCLUÍDO na v10 — era "Outros")',
+    10:'(EXCLUÍDO na v10 — era "Depósito")',
+    11:'Recepção de boletos / guias de terceiros / recargas'
   };
   return m[n]||'Natureza '+n+' (não prevista)';
 }
-// Texto oficial completo do manual v7 — para tooltips e abas de metodologia
+// Texto oficial completo do Manual v10 — para tooltips e abas de metodologia
 function natOperOficial(n){
   const m={
-    1:'Crédito (cartão de crédito ou crédito em conta)',
-    2:'Débito (cartão de débito ou débito em conta)',
-    3:'Boleto de transações próprias — boletos pagos, conforme data de pagamento',
-    4:'Transferência de Recursos (genérico — desde 11/2021 PIX é separado em natureza 6)',
-    5:'Pagamento efetuado em dinheiro ou por outra estrutura',
-    6:'PIX (válido para arquivos enviados a partir de 11/2021)',
-    7:'Voucher',
-    8:'Saque em estabelecimento comercial (cashback)',
-    9:'Outros (válido apenas para arquivos enviados até 11/2021)',
-    10:'Depósito',
-    11:'Recepção de pagamento de boletos, guias emitidos por terceiros e recargas de celular'
+    1:'Cartão de Crédito',
+    2:'Cartão de Débito',
+    3:'Boleto de transações próprias — apenas documentos cuja emissão e liquidação tenha sido feita pelo autor do arquivo. Boletos não pagos não devem ser reportados.',
+    4:'Transferência de Recursos (transferências bancárias que não sejam PIX; criptomoedas, cashbacks e via aplicativos de mensagem usam esta natureza)',
+    5:'Pagamento efetuado em dinheiro ou por outra estrutura (quando o pagamento ao vendedor é processado por instituição não declarada)',
+    6:'PIX (válido para arquivos enviados a partir de 11/2021). IND_TP_PIX (campo 12) indica modalidade: 0=QR Dinâmico, 1=QR Estático',
+    7:'Voucher e cartão pré-pago (reportado no momento da utilização do crédito)',
+    8:'Saque ou troco em estabelecimento comercial ou operações de PIX Saque ou Pix Troco',
+    9:'EXCLUÍDO no leiaute v10 (vigência 06/2025). Anteriormente: "Outros" (válido até 11/2021)',
+    10:'EXCLUÍDO no leiaute v10. Anteriormente: "Depósito". A v10 acrescentou "depósitos em cheque ou em dinheiro" à lista de exclusões da origem.',
+    11:'Recepção de pagamento de boletos, guias emitidos por terceiros e recargas de celular realizado por estabelecimento comercial ou prestador de serviços'
   };
   return m[n]||'Código não previsto no leiaute';
+}
+// Categoria operacional — substitui "entrada/saída" no diagnóstico (já que tudo é entrada)
+function tipoOperacaoDimp(reg){
+  const n=reg.natureza;
+  if(n===1||n===2||n===7) return 'Cartão';
+  if(n===3) return 'Boleto próprio';
+  if(n===11) return 'Boleto de terceiros';
+  if(n===4) return 'Transferência';
+  if(n===5) return 'Dinheiro / outra estrutura';
+  if(n===6) return 'PIX';
+  if(n===8) return 'Saque/Troco';
+  if(n===9||n===10) return 'Obsoleto v10';
+  return 'Outro';
 }
 function consolidateDimp(parsedList){
   const byComp={};const todosRegistros=[];const fontes=[];
@@ -6292,33 +6294,14 @@ function consolidateDimp(parsedList){
     for(const d of p.registros){
       d.tipo_dimp=p.tipo==='IF'?'1500':'1100';
       todosRegistros.push(d);
-      if(!byComp[d.periodo])byComp[d.periodo]={entradas:0,saidas:0,volumeBruto:0,registros:[]};
+      if(!byComp[d.periodo])byComp[d.periodo]={entradas:0,volumeBruto:0,ignorado:0,registros:[]};
       const b=byComp[d.periodo];b.registros.push(d);b.volumeBruto+=d.valor;
       const cls=classificaDimp(d);
-      if(cls==='entrada')b.entradas+=d.valor;else if(cls==='saida')b.saidas+=d.valor;
+      if(cls==='entrada')b.entradas+=d.valor;
+      else b.ignorado+=d.valor; // COMEX, NAT obsoletas (9/10), códigos fora do leiaute
     }
   }
   return{byComp,registros:todosRegistros,fontes};
-}
-// Recalcula entradas/saidas usando o modo NAT 4 atual (sem reparsear arquivos)
-function reconsolidateDimp(){
-  if(!EFD_STATE.dimpData)return;
-  const dimp=EFD_STATE.dimpData;
-  Object.values(dimp.byComp).forEach(b=>{b.entradas=0;b.saidas=0;});
-  dimp.registros.forEach(r=>{
-    const b=dimp.byComp[r.periodo];if(!b)return;
-    const cls=classificaDimp(r);
-    if(cls==='entrada')b.entradas+=r.valor;else if(cls==='saida')b.saidas+=r.valor;
-  });
-}
-// Toggle do modo NAT 4 — reconsolida e re-renderiza
-function efdSetNat4Mode(mode){
-  if(!['excluir','entrada','saida'].includes(mode))return;
-  EFD_STATE.dimpNat4Mode=mode;
-  reconsolidateDimp();
-  efdGerarAlertas();
-  efdRenderTab();
-  if(typeof toast==='function')toast('Modo NAT 4 alterado: '+(mode==='excluir'?'Excluída do cruzamento':mode==='entrada'?'Tratada como entrada':'Tratada como saída'),'info');
 }
 
 /* --- Consolidação EFD --- */
@@ -6528,11 +6511,9 @@ async function efdExportarDimp(){
   const allPeriods=[...new Set([...allComps,...dimpComps])].sort();
   const anos=[...new Set(allPeriods.map(k=>String(k).slice(0,4)))].sort();
   const wb=XLSX.utils.book_new();
-  const nat4Mode=EFD_STATE.dimpNat4Mode||'excluir';
-  const nat4ModeLbl=nat4Mode==='excluir'?'Excluída do cruzamento':nat4Mode==='entrada'?'Tratada como entrada':'Tratada como saída';
 
   // ── Aba 1: Resumo ──
-  const res=[['CRUZAMENTO DIMP × EFD — RESUMO'],['Empresa: '+(EFD_STATE.empresa?.nome||''),'CNPJ: '+(EFD_STATE.empresa?.cnpj||'')],['NAT 4 (Transf. Recursos): '+nat4ModeLbl],[],['Ano','EFD Vendas','DIMP Entradas','Razão','Excedente','Meses Críticos']];
+  const res=[['CRUZAMENTO DIMP × EFD — RESUMO'],['Empresa: '+(EFD_STATE.empresa?.nome||''),'CNPJ: '+(EFD_STATE.empresa?.cnpj||'')],['Premissa metodológica: toda DIMP é entrada do contribuinte (Manual v10, Reg. 0100)'],[],['Ano','EFD Vendas','DIMP Entradas','Razão','Excedente','Meses Críticos']];
   let gE=0,gD=0,gC=0;
   anos.forEach(a=>{const ap=allPeriods.filter(k=>String(k).startsWith(a));let ae=0,ad=0,ac=0;ap.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;ae+=e;ad+=d;if(e>0&&d/e>1.5)ac++;});gE+=ae;gD+=ad;gC+=ac;res.push([a,r2(ae),r2(ad),ae>0?r2(ad/ae):0,r2(ad-ae),ac]);});
   res.push(['TOTAL',r2(gE),r2(gD),gE>0?r2(gD/gE):0,r2(gD-gE),gC]);
@@ -6543,39 +6524,38 @@ async function efdExportarDimp(){
   allPeriods.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;const rz=e>0?(d/e):0;det.push([fmtPeriodo(k),r2(e),r2(d),r2(rz),r2(d-e),e>0&&d===0?'S/ DIMP':rz>2?'ALTO':rz>1.5?'MÉDIO':'OK']);});
   const ws2=XLSX.utils.aoa_to_sheet(det);wb.SheetNames.push('Detalhe Mensal');wb.Sheets['Detalhe Mensal']=ws2;
 
-  // ── Aba 3: Breakdown DIMP (enriquecida) ──
-  const brk=[['Cód. NAT_OPER','Natureza (label oficial)','Tipo DIMP','Classificação','Valor','Qtd','% do total']];
+  // ── Aba 3: Breakdown DIMP (sem direção, com tipo operacional) ──
+  const brk=[['Cód. NAT_OPER','Natureza (label oficial v10)','Tipo arq.','Categoria','Status','Valor','Qtd','% do total']];
   const nt={};
   dimp.registros.forEach(r=>{
     const key=(r.tipo_dimp||'1100')+'|'+r.natureza+'|'+(r.natureza===6?r.ind_pix:'-');
-    if(!nt[key])nt[key]={cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),tipo:r.tipo_dimp||'1100',v:0,q:0};
+    if(!nt[key])nt[key]={cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),tipoOp:tipoOperacaoDimp(r),tipo:r.tipo_dimp||'1100',v:0,q:0};
     nt[key].v+=r.valor;nt[key].q++;
   });
   const totBrk=Object.values(nt).reduce((s,v)=>s+v.v,0);
   Object.keys(nt).sort((a,b)=>nt[b].v-nt[a].v).forEach(k=>{
     const v=nt[k];
-    const codDisp=v.cod===6?(v.ind_pix===1?'6 (Recebido)':v.ind_pix===0?'6 (Enviado)':'6'):v.cod;
-    const clsLbl=v.cls==='entrada'?'Entrada':v.cls==='saida'?'Saída':'Ignorada';
+    const codDisp=v.cod===6?(v.ind_pix===0?'6 (Dinâmico)':v.ind_pix===1?'6 (Estático)':'6'):v.cod;
+    const stLbl=v.cls==='entrada'?'Entrada':'Ignorada';
     const tipoLbl=v.tipo==='1500'?'IF (Banco)':'IP (Adquirente)';
-    brk.push([codDisp,v.lbl,tipoLbl,clsLbl,r2(v.v),v.q,totBrk>0?r2(v.v/totBrk*100):0]);
+    brk.push([codDisp,v.lbl,tipoLbl,v.tipoOp,stLbl,r2(v.v),v.q,totBrk>0?r2(v.v/totBrk*100):0]);
   });
   const ws3=XLSX.utils.aoa_to_sheet(brk);wb.SheetNames.push('Breakdown DIMP');wb.Sheets['Breakdown DIMP']=ws3;
 
-  // ── Aba 4: Diagnóstico Naturezas (mostra TUDO, inclusive ignoradas) ──
+  // ── Aba 4: Diagnóstico Naturezas (matriz tipo × código completa, conforme v10) ──
   const diag=[
-    ['DIAGNÓSTICO DE NATUREZAS — Manual DIMP Leiaute v7 (Reg. 1115, campo 09)'],
+    ['DIAGNÓSTICO DE NATUREZAS — Manual DIMP Leiaute v10 (Reg. 1115, campo 09)'],
+    ['Premissa: toda transação reportada é entrada do contribuinte (cliente recebe os recursos).'],
     [],
-    ['Cód.','Descrição oficial','Tipo','Tem no arquivo?','Valor','Qtd','Direção (Radar ST)','Observação']
+    ['Cód.','Descrição oficial','Tipo arq.','Categoria','Tem no arquivo?','Valor','Qtd','Status','Observação']
   ];
-  // Naturezas observadas no arquivo, agrupadas por (tipo, código)
   const obsKey={};
   dimp.registros.forEach(r=>{
     const k=(r.tipo_dimp||'1100')+'|'+r.natureza;
-    if(!obsKey[k])obsKey[k]={tipo:r.tipo_dimp||'1100',cod:r.natureza,valor:0,qtd:0,cls:classificaDimp(r)};
+    if(!obsKey[k])obsKey[k]={tipo:r.tipo_dimp||'1100',cod:r.natureza,valor:0,qtd:0,cls:classificaDimp(r),tipoOp:tipoOperacaoDimp(r)};
     obsKey[k].valor+=r.valor;obsKey[k].qtd++;
   });
-  // Linhas: para cada combinação (tipo × código 1..11), informar status
-  const codigos=[1,2,3,4,5,6,7,8,10,11];
+  const codigos=[1,2,3,4,5,6,7,8,9,10,11];
   const tipos=[['1100','IP (Adquirente)'],['1500','IF (Banco)']];
   tipos.forEach(([tp,tpLbl])=>{
     codigos.forEach(c=>{
@@ -6584,12 +6564,14 @@ async function efdExportarDimp(){
       const presente=o?'Sim':'Não';
       const valor=o?r2(o.valor):0;
       const qtd=o?o.qtd:0;
-      const cls=o?(o.cls==='entrada'?'Entrada':o.cls==='saida'?'Saída':'Ignorada (sem direção definida)'):'—';
+      const status=o?(o.cls==='entrada'?'Entrada':'Ignorada (COMEX ou obsoleta)'):'—';
+      const cat=o?o.tipoOp:(c===1||c===2||c===7?'Cartão':c===3?'Boleto próprio':c===4?'Transferência':c===5?'Dinheiro':c===6?'PIX':c===8?'Saque/Troco':c===11?'Boleto terceiros':'Obsoleto v10');
       let obs='';
-      if(c===4&&o)obs='Modo atual: '+nat4ModeLbl;
-      if(c===6&&o)obs='Separado por ind_pix (0=enviado, 1=recebido)';
-      if(!o&&[5,8,11].includes(c))obs='Pode estar sendo descartada na origem — verificar extrator';
-      diag.push([c,desc,tpLbl,presente,valor,qtd,cls,obs]);
+      if((c===9||c===10)&&o)obs='Obsoleto na v10 — arquivo provavelmente anterior a 06/2025';
+      else if(c===6&&o)obs='IND_TP_PIX: 0=QR Dinâmico, 1=QR Estático (modalidade, não direção)';
+      else if(c===8&&o)obs='Inclui PIX Saque/Troco — pode incluir fluxo de caixa que não é venda';
+      else if(!o&&[5,8,11].includes(c))obs='Pode estar sendo descartada na origem — verificar extrator';
+      diag.push([c,desc,tpLbl,cat,presente,valor,qtd,status,obs]);
     });
   });
   const ws4=XLSX.utils.aoa_to_sheet(diag);wb.SheetNames.push('Diagnóstico Naturezas');wb.Sheets['Diagnóstico Naturezas']=ws4;
@@ -6629,7 +6611,7 @@ async function efdExportarDimp(){
   });
   const concArr=Object.values(concMap).sort((a,b)=>b.valor-a.valor);
   const totConc=concArr.reduce((s,v)=>s+v.valor,0);
-  const conc=[['CONCENTRAÇÃO POR ADQUIRENTE / LIQUIDANTE (CNPJ_ADQUI)'],['Considera apenas registros classificados como entrada · Modo NAT 4: '+nat4ModeLbl],[],['CNPJ Adquirente','Nome(s) reportado(s)','Tipo','Valor','% do total','Qtd ops']];
+  const conc=[['CONCENTRAÇÃO POR ADQUIRENTE / LIQUIDANTE (CNPJ_ADQUI)'],['Considera apenas registros classificados como entrada (exclui COMEX e naturezas obsoletas)'],[],['CNPJ Adquirente','Nome(s) reportado(s)','Tipo','Valor','% do total','Qtd ops']];
   concArr.forEach(c=>{
     conc.push([fmtCNPJ(c.cnpj),[...c.nomes].join(' / '),[...c.tipos].map(t=>t==='1500'?'IF':'IP').join('+'),r2(c.valor),totConc>0?r2(c.valor/totConc*100):0,c.qtd]);
   });
@@ -6640,71 +6622,75 @@ async function efdExportarDimp(){
   allPeriods.forEach(k=>{const e=con.porComp[k]?con.porComp[k].vl_venda:0;const d=dimp.byComp[k]?dimp.byComp[k].entradas:0;const rz=e>0?(d/e):0;if(rz>1.5||(e>0&&d===0))alr.push([fmtPeriodo(k),r2(e),r2(d),r2(rz),r2(d-e),e>0&&d===0?'Sem DIMP':rz>2?'Razão > 2×':'Razão > 1.5×']);});
   const ws7=XLSX.utils.aoa_to_sheet(alr);wb.SheetNames.push('Alertas');wb.Sheets['Alertas']=ws7;
 
-  // ── Aba 8: Metodologia DIMP v7 ──
+  // ── Aba 8: Metodologia DIMP v10 ──
   const met=[
     ['METODOLOGIA — Cruzamento DIMP × EFD ICMS/IPI'],
     [],
     ['1. LEIAUTE DE REFERÊNCIA'],
-    ['Manual DIMP — Leiaute Versão 07 (Ato COTEPE/ICMS), vigência a partir de 01/11/2021'],
+    ['Manual DIMP — Leiaute Versão 10 (Ato COTEPE/ICMS), vigência a partir de 01/06/2025'],
+    ['Versões anteriores ainda válidas para arquivos do período: v07 (11/2021–03/2023) e v09 (04/2023–05/2025)'],
     ['Convênio ICMS 134/2016 — institui a obrigação acessória'],
     [],
-    ['2. NATUREZAS DA OPERAÇÃO (Registro 1115, campo 09)'],
-    ['Cód.','Descrição oficial'],
+    ['2. PREMISSA METODOLÓGICA — DIMP REGISTRA APENAS ENTRADAS'],
+    ['Conforme Manual v10, Registro 0100: "Este registro tem por objetivo identificar os clientes... que recebem os pagamentos, depósitos ou transferências de recursos."'],
+    ['Logo, todo registro reportado é uma ENTRADA do ponto de vista do contribuinte. As IFs e IPs reportam apenas movimentação recebida — não há lado debitado.'],
+    ['Não existem "PIX enviado", "TED Débito" ou "Débito em conta" como entidades nos dados — são interpretações errôneas.'],
+    [],
+    ['3. NATUREZAS DA OPERAÇÃO (Registro 1115, campo 09)'],
+    ['Cód.','Descrição oficial v10'],
     ...codigos.map(c=>[c,natOperOficial(c)]),
-    [9,'Outros (válido apenas para arquivos enviados até 11/2021 — não esperado em arquivos atuais)'],
     [],
-    ['3. TIPOS DE REPORTANTE'],
-    ['IP — Instituição de Pagamento / Adquirente: Cielo, Rede, Stone, Mercado Pago, etc. (transações de cartão e intermediação)'],
-    ['IF — Instituição Financeira (Banco): BB, Bradesco, Caixa, Itaú, etc. (transações em conta corrente)'],
+    ['4. TIPOS DE REPORTANTE'],
+    ['IP — Instituição de Pagamento / Adquirente: Cielo, Rede, Stone, Mercado Pago, etc. (Registro 1100, transações de cartão e intermediação)'],
+    ['IF — Instituição Financeira (Banco): BB, Bradesco, Caixa, Itaú, etc. (Registro 1500, transações em conta)'],
     [],
-    ['4. TRATAMENTO DA NATUREZA 4 — TRANSFERÊNCIA DE RECURSOS'],
-    ['A NAT 4 é genérica e direção-ambígua: pode representar TED entrada, TED saída, transferência interbancária recebida ou enviada.'],
-    ['Sem informação adicional (ind_pix só vale para NAT 6), o Radar ST oferece três modos:'],
-    ['  • Excluir do cruzamento — default conservador (mais correto tecnicamente)'],
-    ['  • Tratar como entrada — presunção a favor do fisco'],
-    ['  • Tratar como saída — comportamento legado (NÃO recomendado por defaultear como TED Débito)'],
-    ['Modo aplicado neste relatório: '+nat4ModeLbl],
+    ['5. INDICADOR DE TIPO DE PIX (campo 12 do Reg. 1115, v10)'],
+    ['IND_TP_PIX = 0 → QR Dinâmico — QR gerado para uma cobrança específica, com valor pré-definido (típico de PDV, e-commerce com checkout integrado)'],
+    ['IND_TP_PIX = 1 → QR Estático — chave fixa, valor digitado pelo pagador (típico de pequeno comércio, MEI, autônomo)'],
+    ['ATENÇÃO: o campo indica modalidade do QR Code, NÃO direção (recebido/enviado). Ambas as modalidades são entradas do contribuinte.'],
     [],
-    ['5. LIMITES DE NÃO-REPORTE — PESSOAS FÍSICAS (Manual p. 23, 70-71)'],
+    ['6. NATUREZAS EXCLUÍDAS NA V10'],
+    ['NAT 9 ("Outros") e NAT 10 ("Depósito") foram retiradas do leiaute na v10 (vigência 06/2025).'],
+    ['A v10 também adicionou "depósitos em cheque ou em dinheiro" à lista de exclusões da origem (item s).'],
+    ['Arquivos anteriores podem conter NAT 9 ou 10 — o Radar ST as ignora para preservar consistência.'],
+    [],
+    ['7. EXCLUSÕES DE OPERAÇÕES NA ORIGEM (Manual v10, Reg. 1100/1500 — 19 categorias)'],
+    ['Tudo que está na DIMP já passou pelo seguinte filtro de exclusão pelas próprias instituições:'],
+    ['  a) Transferências entre mesma titularidade ou mesmo grupo empresarial (mesma raiz CNPJ)'],
+    ['  b) Benefícios previdenciários e pensões destinados a PF'],
+    ['  c) Transações de natureza salarial destinadas a PF'],
+    ['  d) Benefícios sociais e provenientes de órgãos públicos destinados a PF/PJ'],
+    ['  e) Empréstimos e financiamentos'],
+    ['  f) Liquidações via SLC/CIP para crédito, débito e antecipações'],
+    ['  g) Operações de câmbio registradas no BACEN'],
+    ['  h) Contas de instituições financeiras (incluindo distribuidoras, corretoras, agências de fomento, sociedades de seguro/previdência/capitalização, fundos e clubes de investimento — exceto adquirentes)'],
+    ['  i) Condomínios'],
+    ['  j) Conta-salário'],
+    ['  k) Pagamentos de PLR, dividendos e juros sobre capital próprio'],
+    ['  l) Crédito e restituição de IR'],
+    ['  m) Indenizações vinculadas a ordem judicial, apólice de seguro, previdenciárias ou trabalhistas'],
+    ['  n) Resgate, juros, amortização e outras formas de ingresso de recursos de aplicações financeiras'],
+    ['  o) Cashbacks e programas de incentivo creditados pela própria instituição autora'],
+    ['  p) Doações e patrocínios provenientes de leis de incentivo'],
+    ['  q) Créditos de câmbio sem operação de venda/serviço internacional'],
+    ['  r) Créditos oriundos de estornos'],
+    ['  s) Depósitos em cheque ou em dinheiro (NOVO na v10)'],
+    ['Implicação: hipóteses não-tributárias clássicas (transferências entre contas próprias, empréstimos, devoluções, depósitos em dinheiro) já foram excluídas pelas instituições — NÃO cabem como justificativa do contribuinte.'],
+    [],
+    ['8. LIMITES DE NÃO-REPORTE — PESSOAS FÍSICAS'],
     ['Transações de PF com valor mensal < R$ 3.375,00 OU quantidade < 30 ops/mês não são reportadas.'],
     ['Ambos os limites devem ser ultrapassados simultaneamente para que a transação apareça na DIMP.'],
-    ['Não afeta contribuintes PJ.'],
+    ['Não afeta contribuintes PJ. Não se aplica a arquivos com finalidade 3 (atender intimação).'],
     [],
-    ['6. OPERAÇÕES JÁ EXCLUÍDAS NA ORIGEM PELAS INSTITUIÇÕES (Manual p. 23, 70-71)'],
-    ['Tudo que está na DIMP já passou pelo seguinte filtro de exclusão:'],
-    ['  a) Transferências entre mesma titularidade ou mesmo grupo empresarial (mesma raiz CNPJ)'],
-    ['  b) Benefícios previdenciários, pensões'],
-    ['  c) Transações de natureza salarial'],
-    ['  d) Benefícios sociais e de órgãos públicos'],
-    ['  e) Empréstimos e financiamentos creditados'],
-    ['  f) Liquidações via SLC/CIP'],
-    ['  g) Transferências para órgãos públicos'],
-    ['  h) Contas de instituições financeiras (exceto adquirentes)'],
-    ['  i) Conta-salário'],
-    ['  j) Condomínios'],
-    ['  k) PLR e dividendos'],
-    ['  l) Restituição de IR'],
-    ['  m) Indenizações judiciais, seguros, previdenciárias'],
-    ['  n) Resgate de aplicação financeira'],
-    ['  o) Cashbacks e programas de incentivo'],
-    ['  p) Doações de leis de incentivo'],
-    ['  q) Créditos de câmbio sem operação de venda'],
-    ['  r) Estornos de tarifas'],
-    ['Implicação: hipóteses não-tributárias clássicas (transferências entre contas próprias, empréstimos, devoluções) já foram excluídas na origem pelas instituições reportantes — não cabem como justificativa do contribuinte.'],
-    [],
-    ['7. INDICADOR DE TIPO DE PIX (campo ind_pix)'],
-    ['Campo presente apenas em arquivos do tipo IF (1500), valores 0 (enviado) e 1 (recebido).'],
-    ['Não é campo padronizado pelo leiaute v7 — assumption do extrator/SEFAZ-MA. Os totais consistentes nos arquivos analisados sustentam a interpretação.'],
-    [],
-    ['8. METODOLOGIA DE CRUZAMENTO'],
+    ['9. METODOLOGIA DE CRUZAMENTO'],
     ['• EFD Vendas: somatório de C100/C190 com CFOP de saída tributável (5xxx, 6xxx, 7xxx) por competência'],
-    ['• DIMP Entradas: somatório dos registros classificados como entrada por natureza (ver Diagnóstico Naturezas)'],
+    ['• DIMP Entradas: somatório dos registros classificados como entrada (todos exceto COMEX e naturezas obsoletas)'],
     ['• Razão DIMP/EFD = DIMP Entradas ÷ EFD Vendas. Razão > 1,5× indica indício de omissão de receita.'],
     ['• Excedente = DIMP Entradas − EFD Vendas. Valor positivo → movimento financeiro maior que o faturamento declarado.'],
     [],
-    ['9. FUNDAMENTAÇÃO LEGAL'],
+    ['10. FUNDAMENTAÇÃO LEGAL'],
     ['• Convênio ICMS 134/2016'],
-    ['• Ato COTEPE/ICMS — Manual DIMP v7 (vigência 01/11/2021)'],
+    ['• Ato COTEPE/ICMS — Manual DIMP v10 (vigência 01/06/2025)'],
     ['• Lei Estadual MA 7.799/2002, art. 46 — presunção de fato gerador quando movimento real tributável > declarado']
   ];
   const ws8=XLSX.utils.aoa_to_sheet(met);wb.SheetNames.push('Metodologia DIMP');wb.Sheets['Metodologia DIMP']=ws8;
@@ -6737,29 +6723,33 @@ function efdLaudoDimp(){
   const natAgg={};
   dimp.registros.forEach(r=>{
     const k=(r.tipo_dimp||'1100')+'|'+r.natureza+'|'+(r.natureza===6?r.ind_pix:'-');
-    if(!natAgg[k])natAgg[k]={tipo:r.tipo_dimp||'1100',cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),valor:0,qtd:0};
+    if(!natAgg[k])natAgg[k]={tipo:r.tipo_dimp||'1100',cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),tipoOp:tipoOperacaoDimp(r),valor:0,qtd:0};
     natAgg[k].valor+=r.valor;natAgg[k].qtd++;
   });
   const natList=Object.values(natAgg).sort((a,b)=>b.valor-a.valor);
   if(natList.length){
-    t+='\n4. NATUREZAS PRESENTES (Manual DIMP Leiaute v7, Reg. 1115)\n'+'─'.repeat(30)+'\n';
+    t+='\n4. NATUREZAS PRESENTES (Manual DIMP Leiaute v10, Reg. 1115)\n'+'─'.repeat(30)+'\n';
     natList.forEach(v=>{
-      const codDisp=v.cod===6?(v.ind_pix===1?'6/R':v.ind_pix===0?'6/E':'6'):v.cod;
+      const codDisp=v.cod===6?(v.ind_pix===0?'6/D':v.ind_pix===1?'6/E':'6'):v.cod;
       const tipo=v.tipo==='1500'?'IF':'IP';
-      const cls=v.cls==='entrada'?'Entrada':v.cls==='saida'?'Saída':'Ignorada';
+      const cls=v.cls==='entrada'?'Entrada':'Ignorada';
       t+='Cód. '+codDisp+' ('+tipo+') — '+v.lbl+': R$ '+ff(v.valor)+' em '+v.qtd+' op. ['+cls+']\n';
     });
-    const nat4Mode=EFD_STATE.dimpNat4Mode||'excluir';
-    const hasNat4=natList.some(v=>v.cod===4);
-    if(hasNat4){
-      t+='Nota: NAT 4 (Transferência de Recursos) tratada como: '+(nat4Mode==='excluir'?'EXCLUÍDA do cruzamento':nat4Mode==='entrada'?'ENTRADA (presunção a favor do fisco)':'SAÍDA (modo legado)')+'.\n';
+    const hasNat6=natList.some(v=>v.cod===6);
+    if(hasNat6){
+      t+='Nota: para NAT 6 (PIX), 6/D = QR Dinâmico e 6/E = QR Estático (modalidade de cobrança, não direção). Ambas são entradas.\n';
+    }
+    const hasObsoletas=natList.some(v=>v.cod===9||v.cod===10);
+    if(hasObsoletas){
+      t+='Nota: NAT 9 e 10 foram excluídas do leiaute na v10 (vigência 06/2025) e por isso aparecem ignoradas.\n';
     }
   }
 
   t+='\n5. FUNDAMENTAÇÃO LEGAL E METODOLÓGICA\n'+'─'.repeat(30)+'\n';
-  t+='A DIMP (Declaração de Informações de Meios de Pagamento) foi instituída pelo Convênio ICMS 134/2016 e regulamentada por Ato COTEPE/ICMS, sendo a versão 07 do leiaute vigente desde 01/11/2021.\n\n';
+  t+='A DIMP (Declaração de Informações de Meios de Pagamento) foi instituída pelo Convênio ICMS 134/2016 e regulamentada por Ato COTEPE/ICMS, sendo a versão 10 do leiaute vigente desde 01/06/2025 (versões anteriores: v07 a partir de 11/2021 e v09 a partir de 04/2023).\n\n';
   t+='As informações são prestadas mensalmente pelas instituições financeiras, de pagamento e intermediadores de serviços e negócios, e contemplam transações com cartões de crédito, débito, cartões de loja, PIX, boletos, transferências de recursos e demais instrumentos eletrônicos de pagamento.\n\n';
-  t+='Conforme o próprio leiaute (Manual DIMP v7, p. 23 e 70-71), as instituições reportantes JÁ EXCLUEM na origem as seguintes operações: transferências entre mesma raiz CNPJ, salários e benefícios previdenciários, empréstimos e financiamentos, liquidações via SLC/CIP, transferências para órgãos públicos, dividendos e PLR, restituição de IR, indenizações judiciais, resgates de aplicação financeira, cashbacks, doações de incentivo, créditos de câmbio sem operação de venda, estornos de tarifas, conta-salário e condomínios. As entradas reportadas na DIMP, portanto, têm presunção robusta de corresponder a movimentação comercial.\n\n';
+  t+='PREMISSA METODOLÓGICA: conforme Manual v10, registro 0100, "este registro tem por objetivo identificar os clientes... que recebem os pagamentos, depósitos ou transferências de recursos". Logo, todo registro reportado é uma ENTRADA do ponto de vista do contribuinte. As IFs e IPs reportam apenas movimentação recebida — não há lado debitado da contraparte.\n\n';
+  t+='Conforme o leiaute v10 (descrição dos registros 1100 e 1500), as instituições reportantes JÁ EXCLUEM na origem as seguintes operações (lista exaustiva): transferências entre mesma raiz CNPJ, salários e benefícios previdenciários, benefícios sociais e de órgãos públicos, empréstimos e financiamentos, liquidações via SLC/CIP, operações de câmbio registradas no BACEN, contas de instituições financeiras (incluindo distribuidoras, corretoras, agências de fomento, sociedades de seguro/previdência/capitalização, fundos e clubes de investimento), conta-salário, condomínios, PLR, dividendos e juros sobre capital próprio, restituição de IR, indenizações judiciais e seguros, resgates e juros de aplicação financeira, cashbacks da própria instituição, doações de leis de incentivo, créditos de câmbio sem operação de venda, estornos, e depósitos em cheque ou em dinheiro. As entradas reportadas na DIMP, portanto, têm presunção robusta de corresponder a movimentação comercial.\n\n';
   t+='A divergência entre o volume financeiro movimentado (DIMP entradas) e o faturamento declarado (EFD ICMS/IPI saídas tributáveis) configura indício de omissão de receita, nos termos do art. 46 da Lei Estadual MA 7.799/2002, que presume ocorrido o fato gerador quando constatado que o movimento real tributável foi superior ao declarado pelo contribuinte.\n';
   const modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.onclick=e=>{if(e.target===modal)modal.remove();};
@@ -7523,30 +7513,17 @@ function efdRenderTab(){
       h+='</tbody></table>';
     }
     
-    // Breakdown por natureza — versão enriquecida (com código, classificação oficial, ignoradas)
+    // Breakdown por natureza — versão v10 (sem direção, com tipo operacional)
     const dimpRegs=EFD_STATE.dimpAnoFiltro==='todos'?dimp.registros:dimp.registros.filter(r=>String(r.periodo).startsWith(EFD_STATE.dimpAnoFiltro));
 
-    // Toggle NAT 4 — controla classificação de "Transferência de Recursos"
-    const nat4Mode=EFD_STATE.dimpNat4Mode||'excluir';
-    const hasNat4=dimpRegs.some(r=>r.natureza===4);
-    if(hasNat4){
-      h+='<div style="margin-bottom:12px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">';
-      h+='<span style="font-size:11px;font-weight:700;color:#92400e">⚖️ NAT 4 — Transferência de Recursos:</span>';
-      h+='<span style="font-size:11px;color:#78350f;flex:1;min-width:200px">Direção ambígua sem outros dados. Como tratar?</span>';
-      const opts=[['excluir','Excluir do cruzamento','Default conservador'],['entrada','Tratar como entrada','Presunção a favor do fisco'],['saida','Tratar como saída','Comportamento legado']];
-      opts.forEach(([val,lbl,hint])=>{
-        const sel=nat4Mode===val;
-        h+='<button onclick="efdSetNat4Mode(\''+val+'\')" title="'+hint+'" style="padding:4px 10px;border:1px solid '+(sel?'#92400e':'#fde68a')+';background:'+(sel?'#92400e':'#fff')+';color:'+(sel?'#fff':'#92400e')+';border-radius:5px;cursor:pointer;font-size:10px;font-weight:'+(sel?'700':'600')+'">'+lbl+'</button>';
-      });
-      h+='</div>';
-    }
-
-    // Diagnóstico de naturezas — agrupa por (tipo, código, ind_pix) e mostra TUDO, inclusive ignoradas
+    // Diagnóstico de naturezas — agrupa por (tipo, código, ind_pix) e mostra TUDO
+    // Premissa: toda DIMP é entrada do contribuinte. Coluna mostra tipo operacional, não direção.
     const natDiag={};
     dimpRegs.forEach(r=>{
       const key=(r.tipo_dimp||'1100')+'|'+r.natureza+'|'+(r.natureza===6?r.ind_pix:'-');
-      if(!natDiag[key])natDiag[key]={tipo:r.tipo_dimp||'1100',cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),valor:0,qtd:0};
+      if(!natDiag[key])natDiag[key]={tipo:r.tipo_dimp||'1100',cod:r.natureza,ind_pix:r.ind_pix,lbl:labelNatDimp(r),cls:classificaDimp(r),tipoOp:tipoOperacaoDimp(r),valor:0,qtd:0,comex:0};
       natDiag[key].valor+=r.valor;natDiag[key].qtd++;
+      if(r.ind_comex===1)natDiag[key].comex+=r.valor;
     });
     const natKeys=Object.keys(natDiag).sort((a,b)=>natDiag[b].valor-natDiag[a].valor);
     if(natKeys.length){
@@ -7554,40 +7531,52 @@ function efdRenderTab(){
       const totNat=natKeys.reduce((s,k)=>s+natDiag[k].valor,0);
       const ignoradas=natKeys.filter(k=>natDiag[k].cls==='ignorar');
       const totIgn=ignoradas.reduce((s,k)=>s+natDiag[k].valor,0);
+      const obsoletas=natKeys.filter(k=>natDiag[k].cod===9||natDiag[k].cod===10);
       h+='<div style="font-size:12px;font-weight:700;margin-bottom:6px">📊 Diagnóstico de naturezas'+anoLbl+'</div>';
-      if(ignoradas.length){
-        h+='<div style="font-size:10px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-bottom:6px">⚠ <b>'+ignoradas.length+' natureza(s)</b> sem direção definida — R$ '+f(totIgn)+' ('+(totNat>0?(totIgn/totNat*100).toFixed(1):'0')+'% do volume)</div>';
+      if(obsoletas.length){
+        const totObs=obsoletas.reduce((s,k)=>s+natDiag[k].valor,0);
+        h+='<div style="font-size:10px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-bottom:6px">⚠ Naturezas <b>9 ou 10</b> presentes (R$ '+f(totObs)+'). Ambas foram excluídas do leiaute na v10 (vigência 06/2025). Verifique se o arquivo é anterior a 06/2025 ou se há erro no extrator.</div>';
       }
-      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;margin-bottom:20px"><thead><tr style="background:#f1f5f9">';
+      if(ignoradas.length){
+        h+='<div style="font-size:10px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:6px;margin-bottom:6px">⊘ <b>'+ignoradas.length+' linha(s)</b> ignoradas (COMEX, naturezas obsoletas v10 ou códigos fora do leiaute) — R$ '+f(totIgn)+' ('+(totNat>0?(totIgn/totNat*100).toFixed(1):'0')+'% do volume bruto)</div>';
+      }
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;margin-bottom:6px"><thead><tr style="background:#f1f5f9">';
       h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Cód.</th>';
-      h+='<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Natureza (label oficial)</th>';
-      h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Tipo</th>';
+      h+='<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Natureza (label oficial v10)</th>';
+      h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Tipo arq.</th>';
+      h+='<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569">Categoria</th>';
       h+='<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Valor</th>';
       h+='<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">Qtd</th>';
       h+='<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#475569">%</th>';
-      h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Classificação</th>';
+      h+='<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:700;color:#475569">Status</th>';
       h+='</tr></thead><tbody>';
       natKeys.forEach((k,i)=>{
         const v=natDiag[k];const pct=totNat>0?((v.valor/totNat)*100):0;
-        const clsBadge=v.cls==='entrada'?'📥 Entrada':v.cls==='saida'?'📤 Saída':'⊘ Ignorada';
-        const clsCor=v.cls==='entrada'?'#166534':v.cls==='saida'?'#b91c1c':'#92400e';
+        const stBadge=v.cls==='entrada'?'📥 Entrada':'⊘ Ignorada';
+        const stCor=v.cls==='entrada'?'#166534':'#92400e';
         const tipoLbl=v.tipo==='1500'?'IF':'IP';
         const tipoTitle=v.tipo==='1500'?'Instituição Financeira (Banco)':'Instituição de Pagamento (Adquirente)';
-        const codDisp=v.cod===6?(v.ind_pix===1?'6/R':v.ind_pix===0?'6/E':'6'):v.cod;
+        // Cód: para PIX mostra subtipo Dinâmico/Estático
+        const codDisp=v.cod===6?(v.ind_pix===0?'6 (D)':v.ind_pix===1?'6 (E)':'6'):v.cod;
         const tooltipOficial=natOperOficial(v.cod).replace(/"/g,'&quot;');
         const rowBg=v.cls==='ignorar'?'background:#fffbeb':(i%2?'background:#fafbfc':'');
         h+='<tr style="border-top:1px solid #f1f5f9;'+rowBg+'" title="'+tooltipOficial+'">';
         h+='<td style="padding:5px 8px;text-align:center;font-family:monospace;font-weight:700;font-size:11px;color:#475569">'+codDisp+'</td>';
         h+='<td style="padding:5px 8px;font-weight:600">'+v.lbl+'</td>';
         h+='<td style="padding:5px 8px;text-align:center"><span title="'+tipoTitle+'" style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:'+(v.tipo==='1500'?'#dbeafe':'#fef3c7')+';color:'+(v.tipo==='1500'?'#1e40af':'#92400e')+'">'+tipoLbl+'</span></td>';
+        h+='<td style="padding:5px 8px;font-size:11px;color:#475569">'+v.tipoOp+'</td>';
         h+='<td style="padding:5px 8px;text-align:right;font-family:monospace;font-weight:600">R$ '+f(v.valor)+'</td>';
         h+='<td style="padding:5px 8px;text-align:right;font-family:monospace;font-size:11px;color:#64748b">'+v.qtd.toLocaleString('pt-BR')+'</td>';
         h+='<td style="padding:5px 8px;text-align:right;font-size:11px;color:#64748b">'+pct.toFixed(1)+'%</td>';
-        h+='<td style="padding:5px 8px;text-align:center;color:'+clsCor+';font-weight:600;font-size:11px">'+clsBadge+'</td>';
+        h+='<td style="padding:5px 8px;text-align:center;color:'+stCor+';font-weight:600;font-size:11px">'+stBadge+'</td>';
         h+='</tr>';
       });
       h+='</tbody></table>';
-      h+='<div style="font-size:9px;color:#94a3b8;margin-top:-12px;margin-bottom:16px;padding:0 4px">Cód. NAT_OPER conforme Manual DIMP Leiaute v7 (Reg. 1115, campo 09). Tipo: IP=Inst. Pagamento (1100), IF=Inst. Financeira (1500). Passe o mouse para ver descrição oficial.</div>';
+      h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:16px;padding:0 4px;line-height:1.5">';
+      h+='<b>Premissa metodológica:</b> conforme Manual DIMP v10 (Reg. 0100), as IFs/IPs reportam apenas o que foi <b>recebido pelo contribuinte</b> — todo registro válido é uma entrada. ';
+      h+='Para NAT 6 (PIX), <code>D</code>=QR Dinâmico e <code>E</code>=QR Estático (modalidade de cobrança, <b>não direção</b>). ';
+      h+='Tipo: IP=Inst. Pagamento (Reg. 1100), IF=Inst. Financeira (Reg. 1500). Linhas com COMEX=1 ou naturezas obsoletas (9, 10) são marcadas como ignoradas.';
+      h+='</div>';
     }
     
     c.innerHTML=h;
@@ -8082,16 +8071,22 @@ function oieCruzar(){
     if(!e.uf&&r.uf)e.uf=r.uf;
   });
 
-  // Agrupar pagamentos por CNPJ e código
+  // Agrupar pagamentos por CNPJ e código (preserva todos os códigos com nome)
   const pagMap=new Map();
   oiePagData.forEach(r=>{
     const k=keyFn(r);
-    if(!pagMap.has(k)) pagMap.set(k,{total:0,cod602:0,cod604:0,cod110:0,outros:0,detalhe:[]});
+    if(!pagMap.has(k)) pagMap.set(k,{total:0,cod602:0,cod604:0,cod110:0,outros:0,porCod:{},detalhe:[]});
     const p=pagMap.get(k);
     p.total+=r.valor;
-    if(r.codRec==='602')p.cod602+=r.valor;
-    else if(r.codRec==='604')p.cod604+=r.valor;
-    else if(r.codRec==='110')p.cod110+=r.valor;
+    // Tracking por código (preserva nome da receita)
+    const cod=String(r.codRec||'').trim();
+    if(!p.porCod[cod])p.porCod[cod]={valor:0,qtd:0,nome:r.nomeRec||''};
+    p.porCod[cod].valor+=r.valor;p.porCod[cod].qtd++;
+    if(!p.porCod[cod].nome&&r.nomeRec)p.porCod[cod].nome=r.nomeRec;
+    // Manter campos antigos para compatibilidade com render/export existente
+    if(cod==='602')p.cod602+=r.valor;
+    else if(cod==='604')p.cod604+=r.valor;
+    else if(cod==='110')p.cod110+=r.valor;
     else p.outros+=r.valor;
     p.detalhe.push(r);
   });
@@ -8105,11 +8100,16 @@ function oieCruzar(){
     const declarado=efd?efd.vlRecol:0;
     const pago602=pag?pag.cod602:0;
     const dif=declarado-pago602;
+    const pago110=pag?pag.cod110:0;
+    const difAjustado=declarado-(pago602+pago110); // diferença considerando FUMACOP
     let status='regular';
+    let ajustadoPorFumacop=false;
     if(!pag&&declarado>0) status='sem_pagto';
     else if(!pag&&declarado===0) status='regular'; // nada a pagar, nada pagou
     else if(!efd&&pago602>0) status='so_pagou';
     else if(Math.abs(dif)<1) status='regular';
+    // ✓ NOVO: declarado bate exato com (602 + 110) — FUMACOP particionado, regular
+    else if(pago110>0&&Math.abs(difAjustado)<1){status='regular_fumacop';ajustadoPorFumacop=true;}
     else if(dif>100) status='divergente_menor'; // pagou menos
     else if(dif<-100) status='divergente_maior'; // pagou mais
     else status='proximo';
@@ -8117,15 +8117,16 @@ function oieCruzar(){
       key:k,cnpj:efd?efd.cnpj:(pag?pag.detalhe[0].cnpj:k),
       cnpjRaiz:k.length===8?k:(efd?efd.cnpjRaiz:k.substring(0,8)),
       nome:efd?efd.nome:'',uf:efd?efd.uf:'',periodo:efd?efd.periodo:'',
-      declarado,pago602,dif,status,
+      declarado,pago602,dif,status,ajustadoPorFumacop,
       vlRetencao:efd?efd.vlRetencao:0,vlCredAnt:efd?efd.vlCredAnt:0,
       vlCredTran:efd?efd.vlCredTran:0,vlOr:efd?efd.vlOr:0,
-      pago110:pag?pag.cod110:0,pago604:pag?pag.cod604:0,
-      pagTotal:pag?pag.total:0,pagOutros:pag?pag.outros:0
+      pago110,pago604:pag?pag.cod604:0,
+      pagTotal:pag?pag.total:0,pagOutros:pag?pag.outros:0,
+      porCod:pag?pag.porCod:{}
     });
   });
   oieResultados.sort((a,b)=>{
-    const ord={sem_pagto:0,divergente_menor:1,divergente_maior:2,proximo:3,so_pagou:4,regular:5};
+    const ord={sem_pagto:0,divergente_menor:1,divergente_maior:2,proximo:3,so_pagou:4,regular_fumacop:5,regular:6};
     const o=(ord[a.status]||9)-(ord[b.status]||9);
     if(o!==0)return o;
     // Dentro do mesmo status: maior valor primeiro
@@ -8141,9 +8142,16 @@ function oieCruzar(){
 function oieRender(){
   const el=document.getElementById('oie-results');
   if(!oieResultados.length){el.innerHTML='';return;}
-  const counts={};
-  oieResultados.forEach(r=>{counts[r.status]=(counts[r.status]||0)+1;});
+  const counts={};const totaisPorStatus={};
+  oieResultados.forEach(r=>{
+    counts[r.status]=(counts[r.status]||0)+1;
+    if(!totaisPorStatus[r.status])totaisPorStatus[r.status]={declarado:0,pago:0,dif:0};
+    totaisPorStatus[r.status].declarado+=r.declarado;
+    totaisPorStatus[r.status].pago+=r.pago602;
+    totaisPorStatus[r.status].dif+=r.dif;
+  });
   const nReg=counts.regular||0;
+  const nRegFcp=counts.regular_fumacop||0;
   const nSem=counts.sem_pagto||0;
   const nDivMenor=counts.divergente_menor||0;
   const nDivMaior=counts.divergente_maior||0;
@@ -8153,10 +8161,13 @@ function oieRender(){
   const totalPago=oieResultados.reduce((s,r)=>s+r.pago602,0);
   const totalSemPagto=oieResultados.filter(r=>r.status==='sem_pagto').reduce((s,r)=>s+r.declarado,0);
   const totalDivMenor=oieResultados.filter(r=>r.status==='divergente_menor').reduce((s,r)=>s+r.dif,0);
+  const totalDivMaior=Math.abs(oieResultados.filter(r=>r.status==='divergente_maior').reduce((s,r)=>s+r.dif,0));
+  const totalRegFcp=oieResultados.filter(r=>r.status==='regular_fumacop').reduce((s,r)=>s+r.pago110,0);
+  const totalRegular=oieResultados.filter(r=>r.status==='regular'||r.status==='proximo').reduce((s,r)=>s+r.declarado,0);
   const totalCobrar=totalSemPagto+totalDivMenor;
 
   let h='';
-  // KPIs
+  // KPIs principais (resumo macro)
   h+='<div class="cards-grid" style="grid-template-columns:repeat(4,1fr)">';
   h+='<div class="card"><div class="card-head"><div class="card-icon blue">📊</div>Empresas</div>';
   h+='<div class="card-row"><span class="label">Na EFD (OIE)</span><span class="value">'+new Set(oieEFDData.map(r=>r.cnpj)).size+'</span></div>';
@@ -8164,8 +8175,9 @@ function oieRender(){
   h+='<div class="card-row"><span class="label">Cruzados</span><span class="value big">'+oieResultados.length+'</span></div></div>';
   h+='<div class="card"><div class="card-head"><div class="card-icon green">✅</div>Regulares</div>';
   h+='<div class="card-row"><span class="label">Match exato</span><span class="value" style="color:var(--success);font-weight:800">'+nReg+'</span></div>';
+  if(nRegFcp) h+='<div class="card-row"><span class="label" title="Declarado = pago 602 + pago 110 (FUMACOP particionado)">+ FUMACOP particionado</span><span class="value" style="color:#0d9488;font-weight:700">'+nRegFcp+'</span></div>';
   if(nProx) h+='<div class="card-row"><span class="label">Próximo (< R$100)</span><span class="value">'+nProx+'</span></div>';
-  h+='<div class="card-row"><span class="label">Taxa de match</span><span class="value">'+(oieResultados.length?(nReg/oieResultados.length*100).toFixed(0):0)+'%</span></div></div>';
+  h+='<div class="card-row"><span class="label">Taxa de match</span><span class="value">'+(oieResultados.length?((nReg+nRegFcp+nProx)/oieResultados.length*100).toFixed(0):0)+'%</span></div></div>';
   h+='<div class="card"><div class="card-head"><div class="card-icon amber">⚠</div>Divergentes</div>';
   h+='<div class="card-row"><span class="label">Pagou a menos</span><span class="value" style="color:var(--danger)">'+nDivMenor+'</span></div>';
   h+='<div class="card-row"><span class="label">Pagou a mais</span><span class="value" style="color:#2563eb">'+nDivMaior+'</span></div>';
@@ -8176,25 +8188,75 @@ function oieRender(){
   h+='</div>';
   h+='<div class="total-bar"><div><div class="lbl">Total a cobrar</div><div class="val">R$ '+fmt(totalCobrar)+'</div></div><div class="badge">'+(nSem+nDivMenor)+' empresas com pendência</div></div>';
 
-  // Chips
-  h+='<div class="quick-filters" style="margin:16px 0"><div class="chip-group">';
-  const chips=[
-    {k:'todos',l:'Todos',n:oieResultados.length},
-    {k:'sem_pagto',l:'❌ Sem pagto',n:nSem},
-    {k:'diverg',l:'⚠ Divergentes',n:nDivMenor+nDivMaior},
-    {k:'regular',l:'✅ Regulares',n:nReg+nProx},
-  ];
-  if(nSoPagou)chips.push({k:'so_pagou',l:'🟢 Só pagou',n:nSoPagou});
-  chips.forEach(c=>{
-    h+='<div class="chip '+(oieStatusFiltro===c.k?'active':'')+'" onclick="oieStatusFiltro=\''+c.k+'\';oiePagina=1;oieRender()">'+c.l+'<span class="count">'+c.n+'</span></div>';
+  // ── Painel informativo: Pagamentos adicionais por código de receita ──
+  // (NÃO entram no cruzamento — apenas visibilidade de DIFAL, FUMACOP, ICMS próprio etc.)
+  const codAgg={};let totGeral=0;
+  oiePagData.forEach(r=>{
+    const cod=String(r.codRec||'').trim()||'(sem cód)';
+    if(!codAgg[cod])codAgg[cod]={cod,nome:r.nomeRec||'',valor:0,qtd:0,empresas:new Set()};
+    codAgg[cod].valor+=r.valor;codAgg[cod].qtd++;
+    codAgg[cod].empresas.add(r.cnpj);
+    if(!codAgg[cod].nome&&r.nomeRec)codAgg[cod].nome=r.nomeRec;
+    totGeral+=r.valor;
   });
-  h+='</div></div>';
+  const codsArr=Object.values(codAgg).sort((a,b)=>b.valor-a.valor);
+  const cods602=codsArr.find(c=>c.cod==='602');
+  const codsAdicionais=codsArr.filter(c=>c.cod!=='602');
+  if(codsAdicionais.length){
+    const totAdic=codsAdicionais.reduce((s,c)=>s+c.valor,0);
+    h+='<div style="margin:16px 0;padding:14px 18px;background:linear-gradient(135deg,#eff6ff 0%,#f0fdf4 100%);border:1px solid #bfdbfe;border-radius:10px">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+    h+='<div><div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.5px">💰 Pagamentos Adicionais (informativo)</div>';
+    h+='<div style="font-size:10px;color:#475569;margin-top:2px">Códigos diferentes de 602 — não entram no cruzamento ICMS-ST. R$ '+fmt(totAdic)+' em '+codsAdicionais.reduce((s,c)=>s+c.qtd,0)+' pagamento(s)</div></div>';
+    h+='</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">';
+    codsAdicionais.forEach(c=>{
+      // Cores por categoria conhecida
+      let bd='#e2e8f0',bg='#fff',cor='#1e293b';
+      if(c.cod==='604'){bd='#a78bfa';bg='#f5f3ff';cor='#5b21b6';}
+      else if(c.cod==='110'){bd='#fbbf24';bg='#fffbeb';cor='#92400e';}
+      else if(c.cod==='601'){bd='#60a5fa';bg='#eff6ff';cor='#1e40af';}
+      else if(c.cod==='101'||c.cod==='102'||c.cod==='103'||c.cod==='104'){bd='#86efac';bg='#f0fdf4';cor='#166534';}
+      const nomeCurto=(c.nome||'').length>40?c.nome.substring(0,40)+'…':c.nome;
+      h+='<div style="background:'+bg+';border:1px solid '+bd+';border-radius:6px;padding:8px 10px" title="'+(c.nome||'').replace(/"/g,'&quot;')+'">';
+      h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span style="font-family:monospace;font-weight:800;color:'+cor+';font-size:11px">'+c.cod+'</span><span style="font-size:9.5px;color:'+cor+';font-weight:600;line-height:1.2;flex:1">'+nomeCurto+'</span></div>';
+      h+='<div style="font-size:13px;font-weight:800;color:'+cor+'">R$ '+fmt(c.valor)+'</div>';
+      h+='<div style="font-size:9px;color:#64748b;margin-top:1px">'+c.qtd+' pagto(s) · '+c.empresas.size+' empresa(s)</div>';
+      h+='</div>';
+    });
+    h+='</div></div>';
+  }
+
+  // ── Chips de filtro — layout HORIZONTAL, com qtd + valor total embutido ──
+  // Cada chip mostra: rótulo + qtd + valor (R$). Wrap se faltar largura, mas tenta manter linha única.
+  const chips=[
+    {k:'todos',     l:'Todos',                  n:oieResultados.length, v:totalDecl,    cor:'#475569', bg:'#f1f5f9', cAtv:'#1e293b'},
+    {k:'sem_pagto', l:'❌ Sem pagto',           n:nSem,                  v:totalSemPagto, cor:'#b91c1c', bg:'#fef2f2', cAtv:'#7f1d1d'},
+    {k:'diverg',    l:'⚠ Divergentes',          n:nDivMenor+nDivMaior,   v:totalDivMenor+totalDivMaior, cor:'#92400e', bg:'#fffbeb', cAtv:'#78350f'},
+    {k:'regular',   l:'✅ Regulares',           n:nReg+nProx,            v:totalRegular,  cor:'#166534', bg:'#f0fdf4', cAtv:'#14532d'}
+  ];
+  if(nRegFcp) chips.push({k:'regular_fumacop',l:'✓ Regulares c/ FUMACOP',n:nRegFcp,v:totalRegFcp,cor:'#0f766e',bg:'#ecfeff',cAtv:'#134e4a',badge:'+ FUMACOP'});
+  if(nSoPagou)chips.push({k:'so_pagou',l:'🟢 Só pagou',n:nSoPagou,v:totaisPorStatus.so_pagou?.pago||0,cor:'#0369a1',bg:'#f0f9ff',cAtv:'#0c4a6e'});
+
+  h+='<div style="margin:16px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:stretch">';
+  chips.forEach(c=>{
+    const ativo=oieStatusFiltro===c.k;
+    const corBd=ativo?c.cor:'#e2e8f0';
+    const corBg=ativo?c.bg:'#fff';
+    const sombra=ativo?'box-shadow:0 2px 8px rgba(0,0,0,.08);':'';
+    h+='<div onclick="oieStatusFiltro=\''+c.k+'\';oiePagina=1;oieRender()" style="cursor:pointer;flex:1 1 160px;min-width:160px;padding:10px 14px;border:1.5px solid '+corBd+';background:'+corBg+';border-radius:10px;display:flex;flex-direction:column;gap:2px;transition:all .15s;'+sombra+'" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 10px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\''+(ativo?'0 2px 8px rgba(0,0,0,.08)':'')+'\'">';
+    h+='<div style="display:flex;align-items:center;gap:6px;justify-content:space-between"><span style="font-size:11px;font-weight:700;color:'+(ativo?c.cAtv:c.cor)+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.l+'</span><span style="font-size:11px;font-weight:800;color:'+(ativo?c.cAtv:'#64748b')+';background:'+(ativo?'#fff':c.bg)+';padding:1px 7px;border-radius:10px;border:1px solid '+(ativo?c.cor:'transparent')+';flex-shrink:0">'+c.n+'</span></div>';
+    h+='<div style="font-size:13px;font-weight:800;color:'+(ativo?c.cAtv:c.cor)+';font-family:Consolas,monospace">R$ '+fmt(c.v)+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
 
   // Filter
   let filtered=oieResultados;
   if(oieStatusFiltro==='sem_pagto') filtered=filtered.filter(r=>r.status==='sem_pagto');
   else if(oieStatusFiltro==='diverg') filtered=filtered.filter(r=>r.status==='divergente_menor'||r.status==='divergente_maior');
   else if(oieStatusFiltro==='regular') filtered=filtered.filter(r=>r.status==='regular'||r.status==='proximo');
+  else if(oieStatusFiltro==='regular_fumacop') filtered=filtered.filter(r=>r.status==='regular_fumacop');
   else if(oieStatusFiltro==='so_pagou') filtered=filtered.filter(r=>r.status==='so_pagou');
 
   // Search — preserve value across renders
@@ -8222,12 +8284,14 @@ function oieRender(){
   page.forEach((r,i)=>{
     const gi=start+i;
     const stPill=r.status==='regular'||r.status==='proximo'?'<span class="status-pill ok">✅ OK</span>':
+      r.status==='regular_fumacop'?'<span class="status-pill ok" style="background:#ccfbf1;color:#0f766e" title="Declarado bate com Pago 602 + Pago 110 (FUMACOP)">✓ OK+FUMACOP</span>':
       r.status==='sem_pagto'?'<span class="status-pill irreg">❌ SEM</span>':
       r.status==='divergente_menor'?'<span class="status-pill irreg">⚠ DIV−</span>':
       r.status==='divergente_maior'?'<span class="status-pill ok" style="background:#dbeafe;color:#1d4ed8">ℹ DIV+</span>':
       r.status==='so_pagou'?'<span class="status-pill ok" style="background:#dcfce7;color:#166534">🟢 SÓ PAG</span>':'';
-    const difColor=Math.abs(r.dif)<1?'#94a3b8':r.dif>0?'#b91c1c':'#2563eb';
+    const difColor=Math.abs(r.dif)<1?'#94a3b8':r.status==='regular_fumacop'?'#0f766e':r.dif>0?'#b91c1c':'#2563eb';
     const difTxt=r.status==='sem_pagto'?'<span style="color:#b91c1c;font-weight:700">R$ '+fmt(r.declarado)+'</span>':
+      r.status==='regular_fumacop'?'<span style="color:#0f766e;font-weight:600" title="Diferença = FUMACOP (R$ '+fmt(r.pago110)+')">+ R$ '+fmt(r.dif)+' <span style="font-size:9px;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;margin-left:3px">= 110</span></span>':
       '<span style="color:'+difColor+';font-weight:'+(Math.abs(r.dif)>100?'700':'400')+'">'+(r.dif>0?'+':'')+' R$ '+fmt(r.dif)+'</span>';
     const fmtCNPJ=r.cnpj.length===14?r.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5'):r.cnpj;
     h+='<tr class="main" onclick="oieToggleDetail('+gi+')" id="oie-row-'+gi+'" style="cursor:pointer;border-bottom:1px solid var(--border)'+(i%2?';background:#fafbfc':'')+'">';
@@ -8248,15 +8312,32 @@ function oieRender(){
     h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:700">Saldo credor ant.</div><div style="font-size:14px;font-weight:700;color:var(--text)">R$ '+fmt(r.vlCredAnt)+'</div></div>';
     h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);text-transform:uppercase;font-weight:700">Saldo cred. transp.</div><div style="font-size:14px;font-weight:700;color:var(--text)">R$ '+fmt(r.vlCredTran)+'</div></div>';
     h+='</div>';
-    // Pagamentos detalhados
-    h+='<div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Pagamentos</div>';
-    h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">';
-    h+='<div style="background:'+(r.pago602>0?'#f0fdf4':'#fef2f2')+';border:1px solid '+(r.pago602>0?'#bbf7d0':'#fecaca')+';border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Cod 602 (ST Saída)</div><div style="font-size:14px;font-weight:700">'+(r.pago602>0?'R$ '+fmt(r.pago602):'—')+'</div></div>';
-    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Cod 604 (DIFAL)</div><div style="font-size:14px;font-weight:700">'+(r.pago604>0?'R$ '+fmt(r.pago604):'—')+'</div></div>';
-    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Cod 110 (FUMACOP)</div><div style="font-size:14px;font-weight:700">'+(r.pago110>0?'R$ '+fmt(r.pago110):'—')+'</div></div>';
-    h+='<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">Outros</div><div style="font-size:14px;font-weight:700">'+(r.pagOutros>0?'R$ '+fmt(r.pagOutros):'—')+'</div></div>';
+    // Pagamentos detalhados — render dinâmico de TODOS os códigos pagos pela empresa
+    h+='<div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Pagamentos por código de receita</div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">';
+    // Sempre mostrar 602 (mesmo zerado) — é o código que cruza
+    h+='<div style="background:'+(r.pago602>0?'#f0fdf4':'#fef2f2')+';border:1px solid '+(r.pago602>0?'#bbf7d0':'#fecaca')+';border-radius:8px;padding:8px 12px"><div style="font-size:9px;color:var(--text-3);font-weight:700">📍 602 — ICMS-ST Saída <span style="font-size:8px;color:#166534;font-weight:600">[CRUZADO]</span></div><div style="font-size:14px;font-weight:700">'+(r.pago602>0?'R$ '+fmt(r.pago602):'—')+'</div></div>';
+    // Outros códigos pagos: render só os com valor > 0
+    const codsExtras=Object.keys(r.porCod||{}).filter(c=>c!=='602'&&r.porCod[c].valor>0).sort((a,b)=>r.porCod[b].valor-r.porCod[a].valor);
+    codsExtras.forEach(c=>{
+      const info=r.porCod[c];
+      // Cores por categoria
+      let bd='var(--border)',bg='#fff',cor='var(--text)';
+      if(c==='604'){bd='#a78bfa';bg='#f5f3ff';cor='#5b21b6';}
+      else if(c==='110'){bd='#fbbf24';bg='#fffbeb';cor='#92400e';}
+      else if(c==='601'){bd='#60a5fa';bg='#eff6ff';cor='#1e40af';}
+      else if(['101','102','103','104'].includes(c)){bd='#86efac';bg='#f0fdf4';cor='#166534';}
+      const nomeCurto=(info.nome||'').length>32?info.nome.substring(0,32)+'…':info.nome;
+      h+='<div style="background:'+bg+';border:1px solid '+bd+';border-radius:8px;padding:8px 12px" title="'+(info.nome||'').replace(/"/g,'&quot;')+'"><div style="font-size:9px;color:'+cor+';font-weight:700">'+c+'<span style="color:#94a3b8;font-weight:500"> · '+nomeCurto+'</span></div><div style="font-size:14px;font-weight:700;color:'+cor+'">R$ '+fmt(info.valor)+'</div></div>';
+    });
     h+='</div>';
-    if(r.status!=='regular'&&r.status!=='proximo'){
+    if(r.status==='regular_fumacop'){
+      // Caso especial: declarado = pago 602 + pago 110 (FUMACOP particionado em DARE separado)
+      h+='<div style="margin-top:12px;padding:10px 14px;background:#ecfeff;border:1px solid #67e8f9;border-radius:8px;text-align:center">';
+      h+='<div style="font-size:10px;color:#0f766e;font-weight:700;text-transform:uppercase">✓ Conferido — ST + FUMACOP em dia</div>';
+      h+='<div style="font-size:13px;color:#155e75;margin-top:4px;line-height:1.4">Declarado <b>R$ '+fmt(r.declarado)+'</b> = Pago 602 <b>R$ '+fmt(r.pago602)+'</b> + Pago 110 <b>R$ '+fmt(r.pago110)+'</b></div>';
+      h+='<div style="font-size:10px;color:#64748b;margin-top:4px">A diferença aparente do código 602 corresponde ao FUMACOP recolhido separadamente</div></div>';
+    } else if(r.status!=='regular'&&r.status!=='proximo'){
       const difAbs=Math.abs(r.dif);
       const difBg=r.dif>0?'#fef2f2':'#eff6ff';
       const difBrd=r.dif>0?'#fecaca':'#bfdbfe';
@@ -8311,7 +8392,7 @@ async function oieExportar(){
   if(!oieResultados.length){alert('Execute o cruzamento primeiro');return;}
   const wb=new ExcelJS.Workbook();const hoje=new Date().toISOString().substring(0,10);
   const hd=['Status','CNPJ','Empresa','UF','Período','VL_RETENCAO_ST','VL_ICMS_RECOL_ST','Pago Cod 602','Diferença','Pago Cod 604','Pago Cod 110','Pago Total'];
-  const statusLabel={regular:'Regular',proximo:'Próximo',sem_pagto:'SEM PAGAMENTO',divergente_menor:'DIVERGENTE (pagou menos)',divergente_maior:'Divergente (pagou mais)',so_pagou:'Só pagou'};
+  const statusLabel={regular:'Regular',proximo:'Próximo',regular_fumacop:'Regular (ST + FUMACOP)',sem_pagto:'SEM PAGAMENTO',divergente_menor:'DIVERGENTE (pagou menos)',divergente_maior:'Divergente (pagou mais)',so_pagou:'Só pagou'};
   // Aba Sem Pagamento
   const sem=oieResultados.filter(r=>r.status==='sem_pagto');
   if(sem.length){
@@ -8337,11 +8418,87 @@ async function oieExportar(){
   // Aba Completo
   const ws=wb.addWorksheet('Completo',{views:[{state:'frozen',ySplit:3}]});
   xlTitle(ws,'📊 CRUZAMENTO COMPLETO — OIE × ARRECADAÇÃO',hd.length,1);
-  xlSubtitle(ws,oieResultados.length+' empresas · '+hoje,hd.length,2);
+  xlSubtitle(ws,oieResultados.length+' empresas · '+hoje+' · Cruzamento por Cod 602 (ICMS-ST Saída)',hd.length,2);
   xlHeaderRow(ws,hd,3);
   oieResultados.forEach((r,i)=>{const z=i%2===1;xlDataRow(ws,[statusLabel[r.status],r.cnpj,r.nome,r.uf,r.periodo,r.vlRetencao,r.declarado,r.pago602,r.dif,r.pago604,r.pago110,r.pagTotal],4+i,z);});
   xlAutoWidth(ws,[20,18,40,5,12,16,16,16,16,16,16,16]);
   ws.autoFilter={from:{row:3,column:1},to:{row:3+oieResultados.length,column:hd.length}};
+
+  // ── Aba: Pagamentos Adicionais (informativo, não cruzados) ──
+  // Sumário por código de receita (602 cruzado, demais informativos)
+  const codAggExp={};
+  oiePagData.forEach(r=>{
+    const cod=String(r.codRec||'').trim()||'(sem cód)';
+    if(!codAggExp[cod])codAggExp[cod]={cod,nome:r.nomeRec||'',valor:0,qtd:0,empresas:new Set()};
+    codAggExp[cod].valor+=r.valor;codAggExp[cod].qtd++;
+    codAggExp[cod].empresas.add(r.cnpj);
+    if(!codAggExp[cod].nome&&r.nomeRec)codAggExp[cod].nome=r.nomeRec;
+  });
+  const codsArrExp=Object.values(codAggExp).sort((a,b)=>b.valor-a.valor);
+  const totGeralExp=codsArrExp.reduce((s,c)=>s+c.valor,0);
+  const wsCod=wb.addWorksheet('Pagamentos por Código',{views:[{state:'frozen',ySplit:4}]});
+  const hdCod=['Código','Nome da Receita','Status','Valor Total','% do Total','Qtd Pagamentos','Empresas Distintas'];
+  xlTitle(wsCod,'💰 PAGAMENTOS POR CÓDIGO DE RECEITA',hdCod.length,1);
+  xlSubtitle(wsCod,'Apenas Cod 602 entra no cruzamento ICMS-ST. Demais são informativos. · '+hoje,hdCod.length,2);
+  // Linha 3 reservada para texto explicativo
+  wsCod.mergeCells(3,1,3,hdCod.length);
+  wsCod.getCell(3,1).value='ℹ Cod 604 (DIFAL) e Cod 110 (FUMACOP) requerem extração de campos adicionais da EFD (E316, E116, E250) para cruzamento futuro.';
+  wsCod.getCell(3,1).font={italic:true,size:9,color:{argb:'64748B'}};
+  wsCod.getRow(3).height=18;
+  xlHeaderRow(wsCod,hdCod,4);
+  codsArrExp.forEach((c,i)=>{
+    const z=i%2===1;
+    const status=c.cod==='602'?'CRUZADO (ICMS-ST)':'Informativo';
+    const pct=totGeralExp>0?((c.valor/totGeralExp)*100):0;
+    xlDataRow(wsCod,[c.cod,c.nome,status,c.valor,pct/100,c.qtd,c.empresas.size],5+i,z);
+  });
+  // Linha de total
+  const totRow=5+codsArrExp.length;
+  xlDataRow(wsCod,['TOTAL','','',totGeralExp,1,codsArrExp.reduce((s,c)=>s+c.qtd,0),new Set(oiePagData.map(r=>r.cnpj)).size],totRow,false);
+  wsCod.getRow(totRow).font={bold:true};
+  wsCod.getRow(totRow).fill={type:'pattern',pattern:'solid',fgColor:{argb:'F1F5F9'}};
+  // Formato % na coluna 5
+  for(let i=5;i<=totRow;i++){wsCod.getCell(i,5).numFmt='0.0%';}
+  xlAutoWidth(wsCod,[10,55,22,18,12,14,18]);
+
+  // ── Aba: Pagamentos Adicionais por Empresa (DIFAL, FUMACOP, etc.) ──
+  // Lista empresas que tiveram pagamentos em códigos != 602
+  const empAdic=oieResultados.filter(r=>{
+    return Object.keys(r.porCod||{}).some(c=>c!=='602'&&r.porCod[c].valor>0);
+  });
+  if(empAdic.length){
+    // Coletar todos os códigos != 602 que aparecem
+    const codsSet=new Set();
+    empAdic.forEach(r=>{Object.keys(r.porCod||{}).forEach(c=>{if(c!=='602'&&r.porCod[c].valor>0)codsSet.add(c);});});
+    const codsList=[...codsSet].sort();
+    const codsNomes={};
+    codsList.forEach(c=>{const exemplo=oiePagData.find(p=>p.codRec===c);codsNomes[c]=exemplo?.nomeRec||'';});
+    const wsAdic=wb.addWorksheet('Pagto Adicional p/ Empresa',{views:[{state:'frozen',ySplit:4,xSplit:3}]});
+    const hdAdic=['CNPJ','Empresa','UF','Status ICMS-ST','Pago Cod 602',...codsList.map(c=>'Cod '+c),'Total Adicional'];
+    xlTitle(wsAdic,'💰 PAGAMENTOS ADICIONAIS POR EMPRESA',hdAdic.length,1);
+    xlSubtitle(wsAdic,empAdic.length+' empresa(s) com pagamento(s) em código(s) diferente(s) de 602 · Informativo',hdAdic.length,2);
+    // Linha 3: nomes dos códigos
+    const linhaNomes=['','','','',''];
+    codsList.forEach(c=>linhaNomes.push(codsNomes[c]||''));
+    linhaNomes.push('');
+    wsAdic.getRow(3).values=linhaNomes;
+    wsAdic.getRow(3).font={italic:true,size:9,color:{argb:'64748B'}};
+    xlHeaderRow(wsAdic,hdAdic,4);
+    empAdic.sort((a,b)=>{
+      const totA=codsList.reduce((s,c)=>s+(a.porCod?.[c]?.valor||0),0);
+      const totB=codsList.reduce((s,c)=>s+(b.porCod?.[c]?.valor||0),0);
+      return totB-totA;
+    });
+    empAdic.forEach((r,i)=>{
+      const z=i%2===1;
+      const totAdic=codsList.reduce((s,c)=>s+(r.porCod?.[c]?.valor||0),0);
+      const linha=[r.cnpj,r.nome,r.uf,statusLabel[r.status],r.pago602,...codsList.map(c=>r.porCod?.[c]?.valor||0),totAdic];
+      xlDataRow(wsAdic,linha,5+i,z);
+    });
+    xlAutoWidth(wsAdic,[18,40,5,22,16,...codsList.map(()=>14),16]);
+    wsAdic.autoFilter={from:{row:4,column:1},to:{row:4+empAdic.length,column:hdAdic.length}};
+  }
+
   await xlSave(wb,'OIE_cruzamento_'+hoje+'.xlsx');
 }
 

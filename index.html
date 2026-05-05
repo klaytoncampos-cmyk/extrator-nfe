@@ -2876,7 +2876,7 @@ function executarPreAuditoriaVeiculos(){
     const nota=notaMap.get(item.chave);
     const dataStr=nota.data||'';
     const ufEmit=nota.ufEmissao||'';
-    const convenio=identificarConvenioVeic(nota.infCpl,item);
+    const convenio=identificarConvenioVeic((nota.infCpl||'')+' '+(nota.infAdFisco||''),item);
     const vulnerabilidades=[];
     let statusItem='Regular';
 
@@ -2952,13 +2952,13 @@ function executarPreAuditoriaVeiculos(){
     if(!isCESTVeiculo(item.CEST) && isNCMVeiculo(item.NCM)) vulnerabilidades.push('CEST ausente — NCM '+item.NCM+' corresponde a veículo mas CEST não informado (obrigatório)');
 
     // Detectar NFe substituída (emitida para regularizar outra)
-    const infCplLow=(nota.infCpl||'').toLowerCase();
+    const infCplLow=((nota.infCpl||'')+' '+(nota.infAdFisco||'')).toLowerCase();
     let isSubstituida=false;
     let nfOriginal='';
     if(infCplLow.includes('emitida para regularizar')||infCplLow.includes('novo faturamento')||infCplLow.includes('retorno simbolico')||infCplLow.includes('substituição')||infCplLow.includes('substituicao')){
       isSubstituida=true;
-      // Tentar extrair o número da NFe original
-      const m=(nota.infCpl||'').match(/NF[e]?\s*(?:Original\s*)?n?[°º.]?\s*(\d{6,})/i)||(nota.infCpl||'').match(/(\d{6,})-\d+/);
+      const infFull=(nota.infCpl||'')+' '+(nota.infAdFisco||'');
+      const m=infFull.match(/NF[e]?\s*(?:Original\s*)?n?[°º.]?\s*(\d{6,})/i)||infFull.match(/(\d{6,})-\d+/);
       if(m) nfOriginal=m[1];
     }
 
@@ -3386,13 +3386,13 @@ function executarPreAuditoriaVeiculos(){
       }
     }
 
-    // Extrair dados Conv. 64/06 do infCpl (preço sugerido + data limite)
+    // Extrair dados Conv. 64/06 do infCpl e infAdFisco (preço sugerido + data limite)
     let conv64Preco=0, conv64DataLimite='';
-    if(alertaConv64||(nota.infCpl||'').toLowerCase().includes('conv')){
-      const inf=nota.infCpl||'';
-      const mp=inf.match(/PRECO\s*DE\s*VENDA\s*SUGERIDO.*?R\$\s*([\d.,]+)/i);
+    const infTexto=(nota.infCpl||'')+' '+(nota.infAdFisco||'');
+    if(alertaConv64||infTexto.toLowerCase().includes('conv')){
+      const mp=infTexto.match(/PRECO\s*DE\s*VENDA\s*SUGERIDO.*?R\$\s*([\d.,]+)/i);
       if(mp) conv64Preco=parseFloat(mp[1].replace(/\./g,'').replace(',','.'));
-      const md=inf.match(/ALIENACAO\s*(?:DO\s*VEICULO\s*)?ANTES\s*DE\s*(\d{2}[.\/]\d{2}[.\/]\d{4})/i);
+      const md=infTexto.match(/ALIENACAO\s*(?:DO\s*VEICULO\s*)?ANTES\s*DE\s*(\d{2}[.\/]\d{2}[.\/]\d{4})/i);
       if(md) conv64DataLimite=md[1];
       if(!alertaConv64 && (conv64Preco>0||conv64DataLimite)) alertaConv64=true;
     }
